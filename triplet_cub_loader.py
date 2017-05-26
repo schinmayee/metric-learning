@@ -23,6 +23,7 @@ class CUB_t(data.Dataset):
         
         self.transform = transform
         self.train = train  # training set or test set
+        self.im_size = 64
 
         # paths
         self.root = root
@@ -54,6 +55,7 @@ class CUB_t(data.Dataset):
             self.num_classes = len(labels)
         else:
             self.num_classes = min(num_classes, len(labels))
+        print("CUB triplet loader initialized for %d classes, %d triplets" % (self.num_classes, n_triplets))
 
         # make triplets
         self.num_triplets = n_triplets
@@ -65,7 +67,7 @@ class CUB_t(data.Dataset):
         img1 = self.loader(os.path.join(self.im_base_path, self.images[idx1]))
         img2 = self.loader(os.path.join(self.im_base_path, self.images[idx2]))
         img3 = self.loader(os.path.join(self.im_base_path, self.images[idx3]))
-        img1 = img1.resize((64,64))
+        img1 = img1.resize((self.im_size, self.im_size))
         img2 = img2.resize((64,64))
         img3 = img3.resize((64,64))
 

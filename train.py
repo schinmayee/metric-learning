@@ -15,6 +15,7 @@ from random import shuffle
 
 from triplet_cub_loader import CUB_t
 from tripletnet import Tripletnet
+import simplenet
 
 import hard_mining
 
@@ -38,76 +39,70 @@ parser.add_argument('--log-interval', type=int, default=20, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--margin', type=float, default=0.2, metavar='M',
                     help='margin for triplet loss (default: 0.2)')
-parser.add_argument('--resume', default='', type=str,
+parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument('--name', default='TripletNet', type=str,
+parser.add_argument('--name', type=str, default='TripletNet',
                     help='name of experiment')
-parser.add_argument('--data', default='datasets/cub-2011', type=str,
+parser.add_argument('--data', type=str, default='cub-2011',
                     help='name of experiment')
 parser.add_argument('--triplet_freq', type=int, default=3, metavar='N',
                     help='epochs before new triplets list (default: 3)')
+parser.add_argument('--network', type=str, default='Simple',
+        help='network architecture to use (default: Simple)')
 
+# globals
 best_acc = 0
 
+# parameters
 hard_frac = 0.1
+num_classes = 5
+num_triplets = num_classes*64
 OurSampler = hard_mining.NHardestTripletSampler
 
 def main():
     global args, best_acc
+
     args = parser.parse_args()
-    data_path = args.data
+
+    # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     torch.manual_seed(args.seed)
     if args.cuda:
         torch.cuda.manual_seed(args.seed)
-
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-    num_classes = 5
-    num_triplets = num_classes*64
-    train_data_set = CUB_t(data_path, n_triplets=num_triplets, train=True,
-                           transform=transforms.Compose([
-                             transforms.ToTensor(),
-                             transforms.Normalize((0.1307,), (0.3081,))
-                           ]),
-                           num_classes=num_classes)
+    # data
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    if args.data == 'cub-2011':
+        TLoader = CUB_t
+        data_path = os.path.join(dir_path, 'datasets/cub-2011')
+
+    train_data_set = TLoader(data_path, n_triplets=num_triplets, train=True,
+                             transform=transforms.Compose([
+                               transforms.ToTensor(),
+                               transforms.Normalize((0.1307,), (0.3081,))
+                              ]),
+                              num_classes=num_classes)
     train_loader = torch.utils.data.DataLoader(
-        train_data_set,
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+        train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+    test_data_set = TLoader(data_path, n_triplets=num_classes*16, train=False,
+                            transform=transforms.Compose([
+                              transforms.ToTensor(),
+                              transforms.Normalize((0.1307,), (0.3081,))
+                            ]),
+                            num_classes=num_classes)
     test_loader = torch.utils.data.DataLoader(
-        CUB_t(data_path, n_triplets=num_classes*16, train=False,
-                 transform=transforms.Compose([
-                           transforms.ToTensor(),
-                           transforms.Normalize((0.1307,), (0.3081,))
-                       ]),
-             num_classes=num_classes),
-        batch_size=args.batch_size, shuffle=True, **kwargs)
+        test_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
 
     # image length 
-    im_len = 64
-    # size of first fully connected layer
-    h1_len = (im_len-4)/2
-    h2_len = (h1_len-4)/2
-    fc1_len = h2_len*h2_len*20
+    im_size = train_data_set.im_size
 
-    class Net(nn.Module):
-        def __init__(self):
-            super(Net, self).__init__()
-            self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
-            self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-            self.conv2_drop = nn.Dropout2d()
-            self.fc1 = nn.Linear(fc1_len, 50)
-            self.fc2 = nn.Linear(50, 10)
-
-        def forward(self, x):
-            x = F.relu(F.max_pool2d(self.conv1(x), 2))
-            x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-            x = x.view(-1, fc1_len)
-            x = F.relu(self.fc1(x))
-            x = F.dropout(x, training=self.training)
-            return self.fc2(x)
-
-    model = Net()
+    # network
+    Net = None
+    if args.network == 'Simple':
+        print('Using simple net')
+        Net = simplenet.Simplenet
+    model = Net(im_size)
     tnet = Tripletnet(model)
     if args.cuda:
         tnet.cuda()
