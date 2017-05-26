@@ -1,0 +1,5 @@
+- cifar dataset
+- knn
+- evaluation metrics
+- better and possibly pretrained networks
+- visualization
