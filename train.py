@@ -80,15 +80,13 @@ def main():
     train_data_set = TLoader(data_path, n_triplets=num_triplets, train=True,
                              transform=transforms.Compose([
                                transforms.ToTensor(),
-                               transforms.Normalize((0.1307,), (0.3081,))
-                              ]),
-                              num_classes=num_classes)
+                             ]),
+                             num_classes=num_classes)
     train_loader = torch.utils.data.DataLoader(
         train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
     test_data_set = TLoader(data_path, n_triplets=num_classes*16, train=False,
                             transform=transforms.Compose([
                               transforms.ToTensor(),
-                              transforms.Normalize((0.1307,), (0.3081,))
                             ]),
                             num_classes=num_classes)
     test_loader = torch.utils.data.DataLoader(

@@ -17,7 +17,7 @@ def default_image_loader(path):
     return Image.open(path).convert('RGB')
 
 class CUB_t(data.Dataset):
-    def __init__(self, root, n_triplets=10000, num_classes=-1, train=True, transform=None, target_transform=None, im_size=64):
+    def __init__(self, root, n_triplets=10000, num_classes=-1, train=True, transform=None, im_size=64):
 
         self.loader = default_image_loader
         
