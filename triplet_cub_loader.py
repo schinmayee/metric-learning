@@ -17,13 +17,13 @@ def default_image_loader(path):
     return Image.open(path).convert('RGB')
 
 class CUB_t(data.Dataset):
-    def __init__(self, root, n_triplets=10000, num_classes=-1, train=True, transform=None, target_transform=None, download=False):
+    def __init__(self, root, n_triplets=10000, num_classes=-1, train=True, transform=None, target_transform=None, im_size=64):
 
         self.loader = default_image_loader
         
         self.transform = transform
         self.train = train  # training set or test set
-        self.im_size = 64
+        self.im_size = im_size
 
         # paths
         self.root = root
@@ -36,7 +36,10 @@ class CUB_t(data.Dataset):
                     open(os.path.join(root, 'image_class_labels.txt'), 'r')]
         birdnames = [line.split()[1] for line in
                       open(os.path.join(root, 'classes.txt'), 'r')]
+        boxes = [[int(round(float(c))) for c in line.split()[1:]] for line in
+                 open(os.path.join(root, 'bounding_boxes.txt'),'r')]
         name_to_id = dict(zip(birdnames, range(len(birdnames))))
+
         split = [int(line.split()[1]) for line in
                     open(os.path.join(root, 'train_test_split.txt'),'r')]
 
@@ -50,6 +53,8 @@ class CUB_t(data.Dataset):
         self.images = [image for image, val in zip(images, split) if val == target]
         # labels
         self.labels = np.array([label for label, val in zip(labels, split) if val == target])
+        # boxes
+        self.boxes  = np.array([box for box, val in zip(boxes, split) if val == target])
 
         if num_classes < 0:
             self.num_classes = len(labels)
@@ -67,9 +72,13 @@ class CUB_t(data.Dataset):
         img1 = self.loader(os.path.join(self.im_base_path, self.images[idx1]))
         img2 = self.loader(os.path.join(self.im_base_path, self.images[idx2]))
         img3 = self.loader(os.path.join(self.im_base_path, self.images[idx3]))
+        b1, b2, b3 = self.boxes[idx1], self.boxes[idx2], self.boxes[idx3]
+        img1 = img1.crop(b1)
+        img2 = img2.crop(b2)
+        img3 = img3.crop(b3)
         img1 = img1.resize((self.im_size, self.im_size))
-        img2 = img2.resize((64,64))
-        img3 = img3.resize((64,64))
+        img2 = img2.resize((self.im_size, self.im_size))
+        img3 = img3.resize((self.im_size, self.im_size))
 
         if self.transform is not None:
             img1 = self.transform(img1)
