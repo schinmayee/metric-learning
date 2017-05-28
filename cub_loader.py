@@ -64,4 +64,4 @@ class CUBImages(data.Dataset):
         img = utils.Resize(img, self.im_size)
         if self.transform is not None:
             img = self.transform(img)
-        return img, index
+        return img, self.labels[index], index

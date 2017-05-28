@@ -27,6 +27,10 @@ import hard_mining
 from triplet_cub_loader import CUBTriplets
 from cub_loader import CUBImages
 
+# sklearn for clustering and evaluating clusters
+from sklearn.cluster import KMeans
+import sklearn.metrics as metrics
+
 # Training settings
 parser = argparse.ArgumentParser(description='Metric Learning With Triplet Loss and Unknown Classes')
 parser.add_argument('--batch-size', type=int, default=64,
@@ -190,7 +194,7 @@ def main():
                 'best_prec1': best_acc,
             }, is_best)
 
-            ComputeCluster(val_loader, model)
+            ComputeClusters(val_loader, model, len(val_classes))
 
         # reset sampler and regenerate triplets every few epochs
         if epoch % args.triplet_freq == 0:
@@ -254,22 +258,60 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
 
     return loss_accs.avg
 
-def ComputeCluster(test_loader, enet):
+def ComputeClusters(test_loader, enet, num_clusters):
     global feature_size
     enet.eval()
     embeddings = np.zeros(shape=(len(test_loader.dataset), feature_size),
                           dtype=float)
-    for batch_idx, (data, ids) in enumerate(test_loader):
+    labels_true = np.zeros(shape=(len(test_loader.dataset)), dtype=int)
+    for batch_idx, (data, classes, ids) in enumerate(test_loader):
         if args.cuda:
             data1 = data.cuda()
         data = Variable(data)
 
         # compute embeddings
         f = enet(data)
-        f = f.data.numpy()
-        embeddings[ids.numpy(),:] = f
-    print("Generated embeddings, now running k-means ...")
-    #print(embeddings)
+        embeddings[ids.numpy(),:] = f.data.numpy()
+        labels_true[ids.numpy()] = classes.numpy()
+    print('Generated embeddings, now running k-means for %d clusters...' % num_clusters)
+
+    # map classes to (0,N)
+    # also get initial centroids
+    labels_copy = np.copy(labels_true)
+    unique_classes = np.unique(labels_copy)
+    classes_mapped = np.arange(0,len(unique_classes),1)
+    initial_centers = np.zeros(shape=(num_clusters, feature_size), dtype=float)
+    for i in range(len(unique_classes)):
+        c_ids = np.where(labels_copy == unique_classes[i])
+        labels_true[c_ids] = classes_mapped[i]
+        use_im = np.random.choice(c_ids[0])
+        #print(embeddings[use_im,:])
+        initial_centers[i,:] = embeddings[use_im,:]
+
+    kmeans_model = KMeans(n_clusters=num_clusters, random_state=1,
+                          max_iter=1000, tol=1e-3,
+                          init=initial_centers)
+    labels_predicted = kmeans_model.fit_predict(embeddings)
+    
+    #print('Labels true')
+    #print(labels_true)
+    #print('Labels predicted')
+    #print(labels_predicted)
+
+    acc = metrics.accuracy_score(labels_true, labels_predicted)
+    nmi = metrics.cluster.normalized_mutual_info_score(
+            labels_true, labels_predicted)
+    precision = metrics.precision_score(labels_true, labels_predicted,
+                                       average='micro')
+    recall = metrics.recall_score(labels_true, labels_predicted,
+                                  average='micro')
+
+    print('Accuracy : %f' % acc)
+    print('NMI : %f' % nmi)
+    print('Precision : %f' % precision)
+    print('Recall : %f' % recall)
+    print("")
+    
 
 def TestTriplets(test_loader, tnet, criterion):
     losses = AverageMeter()
