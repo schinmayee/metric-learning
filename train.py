@@ -13,11 +13,17 @@ import torch.backends.cudnn as cudnn
 import numpy as np
 from random import shuffle
 
-from triplet_cub_loader import CUB_t
-from tripletnet import Tripletnet
+# networks
 import simplenet
 
+# triplet loss
+from tripletnet import Tripletnet
+
+# sampling
 import hard_mining
+
+# data loader
+from triplet_cub_loader import CUBTriplets
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -25,40 +31,47 @@ parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                     help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=5, metavar='N',
-                    help='number of epochs to train (default: 5)')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
-parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
-                    help='SGD momentum (default: 0.5)')
+parser.add_argument('--epochs', type=int, default=50, metavar='N',
+                    help='number of epochs to train (default: 50)')
+parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
+                    help='learning rate (default: 1e-3)')
+parser.add_argument('--beta1', type=float, default=0.9,
+                    help='adam beta1 (default: 0.9)')
+parser.add_argument('--beta2', type=float, default=0.999,
+                    help='adam beta2 (default: 0.999)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='enables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
-parser.add_argument('--log-interval', type=int, default=20, metavar='N',
-                    help='how many batches to wait before logging training status')
 parser.add_argument('--margin', type=float, default=0.2, metavar='M',
                     help='margin for triplet loss (default: 0.2)')
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--name', type=str, default='TripletNet',
-                    help='name of experiment')
+        help='name of experiment (default: TripletNet)')
 parser.add_argument('--data', type=str, default='cub-2011',
-                    help='name of experiment')
-parser.add_argument('--triplet_freq', type=int, default=3, metavar='N',
-                    help='epochs before new triplets list (default: 3)')
+        help='dataset (default: cub-2011)')
+parser.add_argument('--triplet_freq', type=int, default=5, metavar='N',
+                    help='epochs before new triplets list (default: 10)')
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
+parser.add_argument('--log-interval', type=int, default=20, metavar='N',
+                    help='how many batches to wait before logging training status')
 
 # globals
 best_acc = 0
 
 # parameters
-hard_frac = 0.1
-num_classes = 5
-num_triplets = num_classes*64
+im_size = 64
+train_classes=range(10)
+test_classes=range(10,15)
+
+triplets_per_class=16
+hard_frac = 0.5
+
 OurSampler = hard_mining.NHardestTripletSampler
 
+# main
 def main():
     global args, best_acc
 
@@ -67,6 +80,7 @@ def main():
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     if args.cuda:
         torch.cuda.manual_seed(args.seed)
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
@@ -74,26 +88,25 @@ def main():
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args.data == 'cub-2011':
-        TLoader = CUB_t
+        TLoader = CUBTriplets
         data_path = os.path.join(dir_path, 'datasets/cub-2011')
 
-    train_data_set = TLoader(data_path, n_triplets=num_triplets, train=True,
+    train_data_set = TLoader(data_path,
+                             n_triplets=triplets_per_class*len(train_classes),
                              transform=transforms.Compose([
                                transforms.ToTensor(),
                              ]),
-                             num_classes=num_classes)
+                             classes=train_classes, im_size=im_size)
     train_loader = torch.utils.data.DataLoader(
         train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
-    test_data_set = TLoader(data_path, n_triplets=num_classes*16, train=False,
+    test_data_set = TLoader(data_path,
+                            n_triplets=triplets_per_class*len(test_classes),
                             transform=transforms.Compose([
                               transforms.ToTensor(),
                             ]),
-                            num_classes=num_classes)
+                            classes=test_classes, im_size=im_size)
     test_loader = torch.utils.data.DataLoader(
         test_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
-
-    # image length 
-    im_size = train_data_set.im_size
 
     # network
     Net = None
@@ -101,6 +114,8 @@ def main():
         print('Using simple net')
         Net = simplenet.Simplenet
     model = Net(im_size)
+
+    # triplet loss
     tnet = Tripletnet(model)
     if args.cuda:
         tnet.cuda()
@@ -121,12 +136,14 @@ def main():
     cudnn.benchmark = True
 
     criterion = torch.nn.MarginRankingLoss(margin = args.margin)
-    optimizer = optim.SGD(tnet.parameters(), lr=args.lr, momentum=args.momentum)
+    optimizer = optim.Adam(tnet.parameters(), lr=args.lr,
+                           betas=[args.beta1,args.beta2])
 
     n_parameters = sum([p.data.nelement() for p in tnet.parameters()])
     print('  + Number of params: {}'.format(n_parameters))
 
-    sampler = OurSampler(num_classes, num_triplets/args.batch_size)
+    sampler = OurSampler(len(train_classes),
+                         args.batch_size/8)
     
     for epoch in range(1, args.epochs + 1):
         # train for one epoch

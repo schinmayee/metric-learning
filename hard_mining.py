@@ -19,8 +19,8 @@ Base class for sampling.
 """
 class Sampler(object):
     def __init__(self, num_classes, num_samples):
-        self.num_classes = num_classes
-        self.num_samples = num_samples
+        self.num_classes = int(num_classes)
+        self.num_samples = int(num_samples)
 
     """
     Reset all samples, that is, clear all mined hard examples.

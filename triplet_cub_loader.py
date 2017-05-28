@@ -5,24 +5,26 @@ The Caltech-UCSD birds dataset.
 import os
 import math
 
+import numpy as np
+
 import torch
 import torch.utils.data as data
-import numpy as np
-import pandas as pd 
+
 from PIL import Image
+
 import hard_mining
 
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
 
-class CUB_t(data.Dataset):
-    def __init__(self, root, n_triplets=10000, num_classes=-1, train=True, transform=None, im_size=64):
+class CUBTriplets(data.Dataset):
+    def __init__(self, root, n_triplets=10000, classes=range(200),
+                 transform=None, im_size=128):
 
         self.loader = default_image_loader
         
         self.transform = transform
-        self.train = train  # training set or test set
         self.im_size = im_size
 
         # paths
@@ -40,31 +42,24 @@ class CUB_t(data.Dataset):
                  open(os.path.join(root, 'bounding_boxes.txt'),'r')]
         name_to_id = dict(zip(birdnames, range(len(birdnames))))
 
-        split = [int(line.split()[1]) for line in
-                    open(os.path.join(root, 'train_test_split.txt'),'r')]
-
-        if train:
-            target = 1
-        else:
-            target = 0
+        # which classes to include
+        self.classes = classes
+        self.num_classes = len(classes)
+        split = [l in classes for l in labels]
 
         # load list and metadata for train/test set
         # paths
-        self.images = [image for image, val in zip(images, split) if val == target]
+        self.images = [image for image, val in zip(images, split) if val]
         # labels
-        self.labels = np.array([label for label, val in zip(labels, split) if val == target])
+        self.labels = np.array([label for label, val in zip(labels, split) if val])
         # boxes
-        self.boxes  = np.array([box for box, val in zip(boxes, split) if val == target])
-
-        if num_classes < 0:
-            self.num_classes = len(labels)
-        else:
-            self.num_classes = min(num_classes, len(labels))
-        print("CUB triplet loader initialized for %d classes, %d triplets" % (self.num_classes, n_triplets))
+        self.boxes  = np.array([box for box, val in zip(boxes, split) if val])
 
         # make triplets
         self.num_triplets = n_triplets
         self.make_triplet_list(n_triplets)
+
+        print("CUB triplet loader initialized for %d classes, %d triplets" % (self.num_classes, n_triplets))
 
 
     def __getitem__(self, index):
@@ -94,7 +89,8 @@ class CUB_t(data.Dataset):
         print('Processing Triplet Generation ...')
         self.triplets = []
         nc = int(self.num_classes)
-        for class_idx in range(1,nc+1):
+        for cx in range(nc):
+            class_idx = self.classes[cx]
             # a, b, c are index of labels where it's equal to class_idx
             a = np.random.choice(np.where(self.labels==class_idx)[0],
                                  int(ntriplets/nc), replace=True)
@@ -111,7 +107,6 @@ class CUB_t(data.Dataset):
         print('Done!')
 
     def regenerate_triplet_list(self, sampler, frac_hard):
-        assert(self.train)
         print("Processing Triplet Regeneration ...")
         # negatives is a tuple of anchors and negative examples
         num_random_triplets = self.num_triplets*(1.0-frac_hard)

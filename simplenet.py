@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Simplenet(nn.Module):
-    def __init__(self, im_len):
+    def __init__(self, im_len=128):
         super(Simplenet, self).__init__()
         # size of first fully connected layer
         self.im_len = im_len
@@ -17,9 +17,9 @@ class Simplenet(nn.Module):
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.bn2   = nn.BatchNorm2d(20)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(self.fc1_len, 50)
-        self.bn3 = nn.BatchNorm1d(50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fc1 = nn.Linear(self.fc1_len, 128)
+        self.bn3 = nn.BatchNorm1d(128)
+        self.fc2 = nn.Linear(128, 64)
 
     def forward(self, x):
         x = self.bn0(x)
