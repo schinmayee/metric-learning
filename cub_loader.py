@@ -13,11 +13,7 @@ import torch.utils.data as data
 from PIL import Image
 
 import utils
-import hard_mining
 
-
-def default_image_loader(path):
-    return Image.open(path).convert('RGB')
 
 class CUBImages(data.Dataset):
     def __init__(self, root, classes=range(200), transform=None, im_size=128):
@@ -59,7 +55,7 @@ class CUBImages(data.Dataset):
 
         print("CUB loader initialized for %d classes, %d images" % (self.num_classes, self.num_images))
 
-    def __len__(self, index):
+    def __len__(self):
         return self.num_images
 
     def __getitem__(self, index):

@@ -25,6 +25,7 @@ import hard_mining
 
 # data loader
 from triplet_cub_loader import CUBTriplets
+from cub_loader import CUBImages
 
 # Training settings
 parser = argparse.ArgumentParser(description='Metric Learning With Triplet Loss and Unknown Classes')
@@ -63,9 +64,12 @@ parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
 parser.add_argument('--log-interval', type=int, default=2,
         help='how many batches to wait before logging training status (default: 2)')
+parser.add_argument('--feature-size', type=int, default=64,
+        help='size for embeddings/features to learn')
 
 # globals
 best_acc = 0
+feature_size = 0
 
 # parameters
 im_size = 64
@@ -83,7 +87,7 @@ runs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
 
 # main
 def main():
-    global args, best_acc
+    global args, best_acc, feature_size
 
     args = parser.parse_args()
 
@@ -95,10 +99,14 @@ def main():
         torch.cuda.manual_seed(args.seed)
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
+    # feature size
+    feature_size = args.feature_size
+
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args.data == 'cub-2011':
         TLoader = CUBTriplets
+        DLoader = CUBImages
         data_path = os.path.join(dir_path, 'datasets/cub-2011')
 
     train_data_set = TLoader(data_path,
@@ -109,6 +117,7 @@ def main():
                              classes=train_classes, im_size=im_size)
     train_loader = torch.utils.data.DataLoader(
         train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+
     val_data_set_t = TLoader(data_path,
                               n_triplets=triplets_per_class*len(val_classes),
                               transform=transforms.Compose([
@@ -117,13 +126,22 @@ def main():
                               classes=val_classes, im_size=im_size)
     val_loader_t = torch.utils.data.DataLoader(
         val_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
+    val_data_set = DLoader(data_path,
+                           transform=transforms.Compose([
+                             transforms.ToTensor(),
+                           ]),
+                           classes=val_classes, im_size=im_size)
+    val_loader = torch.utils.data.DataLoader(
+            val_data_set, batch_size=args.batch_size, shuffle=False, 
+            sampler=torch.utils.data.sampler.SequentialSampler(val_data_set),
+            **kwargs)
 
     # network
     Net = None
     if args.network == 'Simple':
         print('Using simple net')
         Net = model_net.Simplenet
-    model = Net(im_size)
+    model = Net(feature_size=feature_size, im_len=im_size)
 
     # triplet loss
     tnet = triplet_net.Tripletnet(model)
@@ -172,7 +190,7 @@ def main():
                 'best_prec1': best_acc,
             }, is_best)
 
-        #ComputeCluster(test_loader, model)
+            ComputeCluster(val_loader, model)
 
         # reset sampler and regenerate triplets every few epochs
         if epoch % args.triplet_freq == 0:
@@ -237,8 +255,10 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
     return loss_accs.avg
 
 def ComputeCluster(test_loader, enet):
+    global feature_size
     enet.eval()
-    embeddings = np.array()
+    embeddings = np.zeros(shape=(len(test_loader.dataset), feature_size),
+                          dtype=float)
     for batch_idx, (data, ids) in enumerate(test_loader):
         if args.cuda:
             data1 = data.cuda()
@@ -246,8 +266,10 @@ def ComputeCluster(test_loader, enet):
 
         # compute embeddings
         f = enet(data)
-        print(f)
-        
+        f = f.data.numpy()
+        embeddings[ids.numpy(),:] = f
+    print("Generated embeddings, now running k-means ...")
+    #print(embeddings)
 
 def TestTriplets(test_loader, tnet, criterion):
     losses = AverageMeter()
