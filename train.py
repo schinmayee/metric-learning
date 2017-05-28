@@ -51,7 +51,7 @@ parser.add_argument('--name', type=str, default='TripletNet',
         help='name of experiment (default: TripletNet)')
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
-parser.add_argument('--triplet_freq', type=int, default=5, metavar='N',
+parser.add_argument('--triplet_freq', type=int, default=10, metavar='N',
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
