@@ -26,36 +26,38 @@ import hard_mining
 from triplet_cub_loader import CUBTriplets
 
 # Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                    help='input batch size for training (default: 64)')
-parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
+parser = argparse.ArgumentParser(description='Metric Learning With Triplet Loss and Unknown Classes')
+parser.add_argument('--batch-size', type=int, default=32,
+                    help='input batch size for training (default: 32)')
+parser.add_argument('--test-batch-size', type=int, default=1000,
                     help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=50, metavar='N',
+parser.add_argument('--epochs', type=int, default=50,
                     help='number of epochs to train (default: 50)')
-parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
-                    help='learning rate (default: 1e-3)')
+parser.add_argument('--lr', type=float, default=1e-4,
+                    help='learning rate (default: 1e-4)')
 parser.add_argument('--beta1', type=float, default=0.9,
                     help='adam beta1 (default: 0.9)')
 parser.add_argument('--beta2', type=float, default=0.999,
                     help='adam beta2 (default: 0.999)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='enables CUDA training')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
+parser.add_argument('--seed', type=int, default=1,
                     help='random seed (default: 1)')
-parser.add_argument('--margin', type=float, default=0.2, metavar='M',
+parser.add_argument('--margin', type=float, default=0.2,
                     help='margin for triplet loss (default: 0.2)')
+parser.add_argument('--reg', type=float, default=1e-3,
+                    help='regularization for embedding (default: 1e-3)')
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--name', type=str, default='TripletNet',
         help='name of experiment (default: TripletNet)')
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
-parser.add_argument('--triplet_freq', type=int, default=10, metavar='N',
+parser.add_argument('--triplet_freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
-parser.add_argument('--log-interval', type=int, default=20, metavar='N',
+parser.add_argument('--log-interval', type=int, default=20,
                     help='how many batches to wait before logging training status')
 
 # globals
@@ -64,7 +66,7 @@ best_acc = 0
 # parameters
 im_size = 64
 train_classes=range(10)
-test_classes=range(10,15)
+test_classes=range(10,16)
 
 triplets_per_class=16
 hard_frac = 0.5
@@ -143,7 +145,7 @@ def main():
     print('  + Number of params: {}'.format(n_parameters))
 
     sampler = OurSampler(len(train_classes),
-                         args.batch_size/8)
+                         int((hard_frac+hard_frac/2)*args.batch_size))
     
     for epoch in range(1, args.epochs + 1):
         # train for one epoch
@@ -191,7 +193,7 @@ def train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
-        loss = loss_triplet + 0.001 * loss_embedd
+        loss = loss_triplet + args.reg * loss_embedd
 
         # measure accuracy and record loss
         acc = accuracy(dista, distb)
