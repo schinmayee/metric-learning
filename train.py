@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import time
 
 import torch
 import torch.nn as nn
@@ -57,8 +58,8 @@ parser.add_argument('--triplet_freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
-parser.add_argument('--log-interval', type=int, default=20,
-                    help='how many batches to wait before logging training status')
+parser.add_argument('--log-interval', type=int, default=2,
+        help='how many batches to wait before logging training status (default: 2)')
 
 # globals
 best_acc = 0
@@ -68,10 +69,13 @@ im_size = 64
 train_classes=range(10)
 test_classes=range(10,16)
 
-triplets_per_class=16
+triplets_per_class=16  # keep at least 16 triplets per class, later increase to 32/64
 hard_frac = 0.5
 
 OurSampler = hard_mining.NHardestTripletSampler
+
+runs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                        ('runs/r-%s' % time.strftime('%m-%d-%H-%M')))
 
 # main
 def main():
@@ -239,19 +243,19 @@ def test(test_loader, tnet, criterion, epoch):
         accs.update(acc, data1.size(0))
         losses.update(test_loss, data1.size(0))      
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
+    print('\nTest set triplets: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
         losses.avg, 100. * accs.avg))
     return accs.avg
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     """Saves checkpoint to disk"""
-    directory = "runs/%s/"%(args.name)
+    directory = os.path.join(runs_dir, args.name)
     if not os.path.exists(directory):
         os.makedirs(directory)
-    filename = directory + filename
+    filename = os.path.join(directory, filename)
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'runs/%s/'%(args.name) + 'model_best.pth.tar')
+        shutil.copyfile(filename, os.path.join(directory, 'model_best.pth.tar'))
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
