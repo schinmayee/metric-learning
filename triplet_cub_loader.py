@@ -12,17 +12,15 @@ import torch.utils.data as data
 
 from PIL import Image
 
+import utils
 import hard_mining
 
-
-def default_image_loader(path):
-    return Image.open(path).convert('RGB')
 
 class CUBTriplets(data.Dataset):
     def __init__(self, root, n_triplets=10000, classes=range(200),
                  transform=None, im_size=128):
 
-        self.loader = default_image_loader
+        self.loader = utils.DefaultImageLoader
         
         self.transform = transform
         self.im_size = im_size
@@ -71,9 +69,9 @@ class CUBTriplets(data.Dataset):
         img1 = img1.crop(b1)
         img2 = img2.crop(b2)
         img3 = img3.crop(b3)
-        img1 = img1.resize((self.im_size, self.im_size))
-        img2 = img2.resize((self.im_size, self.im_size))
-        img3 = img3.resize((self.im_size, self.im_size))
+        img1 = utils.Resize(img1, self.im_size)
+        img2 = utils.Resize(img2, self.im_size)
+        img3 = utils.Resize(img3, self.im_size)
 
         if self.transform is not None:
             img1 = self.transform(img1)
@@ -103,6 +101,7 @@ class CUBTriplets(data.Dataset):
 
             for i in range(a.shape[0]):
                 self.triplets.append((a[i], b[i], c[i]))
+        np.random.shuffle(self.triplets)
 
         print('Done!')
 

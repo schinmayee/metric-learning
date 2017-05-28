@@ -15,10 +15,10 @@ import numpy as np
 from random import shuffle
 
 # networks
-import simplenet
+import model_net
 
 # triplet loss
-from tripletnet import Tripletnet
+import triplet_net
 
 # sampling
 import hard_mining
@@ -28,10 +28,8 @@ from triplet_cub_loader import CUBTriplets
 
 # Training settings
 parser = argparse.ArgumentParser(description='Metric Learning With Triplet Loss and Unknown Classes')
-parser.add_argument('--batch-size', type=int, default=32,
-                    help='input batch size for training (default: 32)')
-parser.add_argument('--test-batch-size', type=int, default=1000,
-                    help='input batch size for testing (default: 1000)')
+parser.add_argument('--batch-size', type=int, default=64,
+                    help='input batch size for training (default: 64)')
 parser.add_argument('--epochs', type=int, default=50,
                     help='number of epochs to train (default: 50)')
 parser.add_argument('--lr', type=float, default=1e-4,
@@ -50,12 +48,17 @@ parser.add_argument('--reg', type=float, default=1e-3,
                     help='regularization for embedding (default: 1e-3)')
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
+
 parser.add_argument('--name', type=str, default='TripletNet',
         help='name of experiment (default: TripletNet)')
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
+
 parser.add_argument('--triplet_freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
+parser.add_argument('--val-freq', type=int, default=2,
+        help='epochs before validating on validation set (default: 2)')
+
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
 parser.add_argument('--log-interval', type=int, default=2,
@@ -66,8 +69,9 @@ best_acc = 0
 
 # parameters
 im_size = 64
-train_classes=range(10)
-test_classes=range(10,16)
+train_classes=range(8)  # multiple of 4
+val_classes=range(8,12)
+test_classes=range(12,16)
 
 triplets_per_class=16  # keep at least 16 triplets per class, later increase to 32/64
 hard_frac = 0.5
@@ -105,24 +109,24 @@ def main():
                              classes=train_classes, im_size=im_size)
     train_loader = torch.utils.data.DataLoader(
         train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
-    test_data_set = TLoader(data_path,
-                            n_triplets=triplets_per_class*len(test_classes),
-                            transform=transforms.Compose([
-                              transforms.ToTensor(),
-                            ]),
-                            classes=test_classes, im_size=im_size)
-    test_loader = torch.utils.data.DataLoader(
-        test_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+    val_data_set_t = TLoader(data_path,
+                              n_triplets=triplets_per_class*len(val_classes),
+                              transform=transforms.Compose([
+                                transforms.ToTensor(),
+                              ]),
+                              classes=val_classes, im_size=im_size)
+    val_loader_t = torch.utils.data.DataLoader(
+        val_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
 
     # network
     Net = None
     if args.network == 'Simple':
         print('Using simple net')
-        Net = simplenet.Simplenet
+        Net = model_net.Simplenet
     model = Net(im_size)
 
     # triplet loss
-    tnet = Tripletnet(model)
+    tnet = triplet_net.Tripletnet(model)
     if args.cuda:
         tnet.cuda()
 
@@ -153,18 +157,22 @@ def main():
     
     for epoch in range(1, args.epochs + 1):
         # train for one epoch
-        train(train_loader, tnet, criterion, optimizer, epoch, sampler)
-        # evaluate on validation set
-        acc = test(test_loader, tnet, criterion, epoch)
+        Train(train_loader, tnet, criterion, optimizer, epoch, sampler)
 
-        # remember best acc and save checkpoint
-        is_best = acc > best_acc
-        best_acc = max(acc, best_acc)
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': tnet.state_dict(),
-            'best_prec1': best_acc,
-        }, is_best)
+        # evaluate on validation set
+        if epoch % args.val_freq == 0:
+            acc = TestTriplets(val_loader_t, tnet, criterion)
+
+            # remember best acc and save checkpoint
+            is_best = acc > best_acc
+            best_acc = max(acc, best_acc)
+            SaveCheckpoint({
+                'epoch': epoch + 1,
+                'state_dict': tnet.state_dict(),
+                'best_prec1': best_acc,
+            }, is_best)
+
+        #ComputeCluster(test_loader, model)
 
         # reset sampler and regenerate triplets every few epochs
         if epoch % args.triplet_freq == 0:
@@ -173,9 +181,9 @@ def main():
             # then reset sampler
             sampler.Reset()
 
-def train(train_loader, tnet, criterion, optimizer, epoch, sampler):
+def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
     losses = AverageMeter()
-    accs = AverageMeter()
+    loss_accs = AverageMeter()
     emb_norms = AverageMeter()
     
     # switch to train mode
@@ -193,16 +201,18 @@ def train(train_loader, tnet, criterion, optimizer, epoch, sampler):
             target = target.cuda()
         target = Variable(target)
         
+        # forward pass
         loss_triplet = criterion(dista, distb, target)
+        # sample hard ngatives based on loss
         sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
         loss = loss_triplet + args.reg * loss_embedd
 
-        # measure accuracy and record loss
-        acc = accuracy(dista, distb)
+        # measure loss accuracy and record loss
+        loss_acc = LossAccuracy(dista, distb)
         losses.update(loss_triplet.data[0], data1.size(0))
-        accs.update(acc, data1.size(0))
+        loss_accs.update(loss_acc, data1.size(0))
         emb_norms.update(loss_embedd.data[0]/3, data1.size(0))
 
         # compute gradient and do optimizer step
@@ -210,16 +220,36 @@ def train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         loss.backward()
         optimizer.step()
 
+        # TODO: compute embeddings
+        # TODO: compute k-means cluster on training set
+        # TODO: determine hard negatives -- points in the wrong cluster
+
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{}]\t'
                   'Loss: {:.4f} ({:.4f}) \t'
-                  'Acc: {:.2f}% ({:.2f}%) \t'
+                  'Loss Acc: {:.2f}% ({:.2f}%) \t'
                   'Emb_Norm: {:.2f} ({:.2f})'.format(
                 epoch, batch_idx * len(data1), len(train_loader.dataset),
                 losses.val, losses.avg, 
-                100. * accs.val, 100. * accs.avg, emb_norms.val, emb_norms.avg))
+                100. * loss_accs.val, 100. * loss_accs.avg,
+                emb_norms.val, emb_norms.avg))
 
-def test(test_loader, tnet, criterion, epoch):
+    return loss_accs.avg
+
+def ComputeCluster(test_loader, enet):
+    enet.eval()
+    embeddings = np.array()
+    for batch_idx, (data, ids) in enumerate(test_loader):
+        if args.cuda:
+            data1 = data.cuda()
+        data = Variable(data)
+
+        # compute embeddings
+        f = enet(data)
+        print(f)
+        
+
+def TestTriplets(test_loader, tnet, criterion):
     losses = AverageMeter()
     accs = AverageMeter()
 
@@ -239,15 +269,15 @@ def test(test_loader, tnet, criterion, epoch):
         test_loss =  criterion(dista, distb, target).data[0]
 
         # measure accuracy and record loss
-        acc = accuracy(dista, distb)
+        acc = LossAccuracy(dista, distb)
         accs.update(acc, data1.size(0))
         losses.update(test_loss, data1.size(0))      
 
-    print('\nTest set triplets: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
+    print('\nTest/val triplets: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
         losses.avg, 100. * accs.avg))
     return accs.avg
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def SaveCheckpoint(state, is_best, filename='checkpoint.pth.tar'):
     """Saves checkpoint to disk"""
     directory = os.path.join(runs_dir, args.name)
     if not os.path.exists(directory):
@@ -274,7 +304,7 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def accuracy(dista, distb):
+def LossAccuracy(dista, distb):
     margin = 0
     pred = (dista - distb - margin).cpu().data
     return (pred > 0).sum()*1.0/dista.size()[0]

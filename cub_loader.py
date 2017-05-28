@@ -12,6 +12,7 @@ import torch.utils.data as data
 
 from PIL import Image
 
+import utils
 import hard_mining
 
 
@@ -21,7 +22,7 @@ def default_image_loader(path):
 class CUBImages(data.Dataset):
     def __init__(self, root, classes=range(200), transform=None, im_size=128):
 
-        self.loader = default_image_loader
+        self.loader = utils.DefaultImageLoader
         
         self.transform = transform
         self.im_size = im_size
@@ -64,7 +65,7 @@ class CUBImages(data.Dataset):
     def __getitem__(self, index):
         img = self.loader(os.path.join(self.im_base_path, self.images[index]))
         img.crop(self.boxes[index])
-        img = img.resize(self.im_size, self.im_size)
+        img = utils.Resize(img, self.im_size)
         if self.transform is not None:
             img = self.transform(img)
         return img, index
