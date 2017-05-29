@@ -43,4 +43,4 @@ class InceptionBased(nn.Module):
         self.inception.fc = nn.Linear(2048, feature_size)
 
     def forward(self, x):
-        return self.inception(x)
+        return self.inception(x)[0]

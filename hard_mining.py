@@ -9,7 +9,6 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
-from tripletnet import Tripletnet
 from visdom import Visdom
 import numpy as np
 from random import shuffle
