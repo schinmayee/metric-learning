@@ -14,6 +14,10 @@ import torch.backends.cudnn as cudnn
 import numpy as np
 from random import shuffle
 
+import pickle
+
+import utils
+
 # networks
 import model_net
 
@@ -54,8 +58,8 @@ parser.add_argument('--reg', type=float, default=1e-3,
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 
-parser.add_argument('--name', type=str, default='TripletNet',
-        help='name of experiment (default: TripletNet)')
+parser.add_argument('--loss', type=str, default='HingeL2',
+        help='loss mechanism (default: HingeL2)')
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
@@ -63,6 +67,8 @@ parser.add_argument('--triplet_freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
+parser.add_argument('--results-freq', type=int, default=10,
+        help='epochs before saving results (default: 10)')
 
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
@@ -73,6 +79,10 @@ parser.add_argument('--feature-size', type=int, default=64,
 
 # globals
 best_acc = 0
+best_precision = 0
+best_recall = 0
+best_f1 = 0
+
 feature_size = 0
 
 # parameters
@@ -92,11 +102,21 @@ OurSampler = hard_mining.NHardestTripletSampler
 runs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                         ('runs/r-%s' % time.strftime('%m-%d-%H-%M')))
 
+epochs = list()
+train_losses = list()
+test_losses = list()
+triplet_accs = list()
+classification_accs = list()
+
 # main
 def main():
-    global args, best_acc, feature_size, im_size
+    global args, feature_size, im_size
+    global best_acc, best_precision, best_recall, best_f1
+    global epochs, train_losses, test_losses
+    global triplet_accs, classification_accs
 
     args = parser.parse_args()
+    assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
 
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -130,10 +150,16 @@ def main():
         Net = model_net.ShallowNet
         # force image size to be 96
         im_size = 96
+    else:
+        assert(False)
     model = Net(feature_size=feature_size, im_size=im_size)
 
     # triplet loss
-    tnet = triplet_net.TripletNet(model)
+    tnet = None
+    if args.loss == 'HingeL2':
+        tnet = triplet_net.HingeL2(model)
+    else:
+        assert(False)
     if args.cuda:
         tnet.cuda()
 
@@ -143,6 +169,8 @@ def main():
         TLoader = CUBTriplets
         DLoader = CUBImages
         data_path = os.path.join(dir_path, 'datasets/cub-2011')
+    else:
+        assert(False)
 
     train_data_set = TLoader(data_path,
                              n_triplets=triplets_per_class*len(train_classes),
@@ -198,29 +226,68 @@ def main():
     
     for epoch in range(1, args.epochs + 1):
         # train for one epoch
-        Train(train_loader, tnet, criterion, optimizer, epoch, sampler)
+        train_loss = Train(train_loader, tnet, criterion, optimizer, epoch, sampler)
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
-            acc = TestTriplets(val_loader_t, tnet, criterion)
+            test_loss, triplet_acc = TestTriplets(val_loader_t, tnet, criterion)
+            test_results = ComputeClusters(val_loader, model, len(val_classes))
+            acc = test_results['accuracy']
+            precision = test_results['precision']
+            recall = test_results['recall']
+            f1 = test_results['f1']
 
             # remember best acc and save checkpoint
             is_best = acc > best_acc
-            best_acc = max(acc, best_acc)
+            if is_best:
+                best_acc = acc
+                best_precision = precision
+                best_recall = recall
+                best_f1 = f1
+
+            
+            print('Best cluster: Accuracy %f, Precision %f, Recall %f, F1 %f\n' % (
+                best_acc, best_precision, best_recall, best_f1))
             SaveCheckpoint({
                 'epoch': epoch + 1,
                 'state_dict': tnet.state_dict(),
                 'best_prec1': best_acc,
             }, is_best)
 
-            ComputeClusters(val_loader, model, len(val_classes))
+            # save data for 2 plots here:
+            #   1. train and test loss (triplet)
+            #   2. triplet and cluster based classification accuracy on validation set
+            epochs.append(epoch)
+            train_losses.append(train_loss)
+            test_losses.append(test_loss)
+            triplet_accs.append(triplet_acc)
+            classification_accs.append(acc)
+            
 
         # reset sampler and regenerate triplets every few epochs
         if epoch % args.triplet_freq == 0:
-            # TODO: regenerate triplets
             train_data_set.regenerate_triplet_list(sampler, hard_frac)
             # then reset sampler
             sampler.Reset()
+
+        # save final results and plot loss/accuracy with training
+        if epoch % args.results_freq == 0:
+            print('Results are being saved to %s' % runs_dir)
+            with open(os.path.join(runs_dir, 'classification'), 'w') as r:
+                r.write('network : %s\n' % args.network)
+                r.write('loss : %s\n' % args.loss)
+                r.write('best accuracy : %f\n' % best_acc)
+                r.write('best precision : %f\n' % best_precision)
+                r.write('best recall : %f\n' % best_recall)
+                r.write('best f1 : %f\n' % best_f1)
+            utils.SavePlots(runs_dir, epochs, train_losses, test_losses,
+                            triplet_accs, classification_accs)
+            pickle.dump(epochs, open(os.path.join(runs_dir, 'epochs'), 'w'))
+            pickle.dump(train_losses, open(os.path.join(runs_dir, 'train_losses'), 'w'))
+            pickle.dump(test_losses, open(os.path.join(runs_dir, 'test_losses'), 'w'))
+            pickle.dump(triplet_accs, open(os.path.join(runs_dir, 'triplet_accs'), 'w'))
+            pickle.dump(classification_accs, open(os.path.join(runs_dir, 'classification_accs'), 'w'))
+            
 
 def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
     losses = AverageMeter()
@@ -340,7 +407,7 @@ def ComputeClusters(test_loader, enet, num_clusters):
                 'recall' : recall,
                 'f1' : f1_score
               }
-    return 
+    return  results
     
 
 def TestTriplets(test_loader, tnet, criterion):
@@ -369,11 +436,11 @@ def TestTriplets(test_loader, tnet, criterion):
 
     print('\nTest/val triplets: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
         losses.avg, 100. * accs.avg))
-    return accs.avg
+    return losses.avg, accs.avg
 
 def SaveCheckpoint(state, is_best, filename='checkpoint.pth.tar'):
     """Saves checkpoint to disk"""
-    directory = os.path.join(runs_dir, args.name)
+    directory = os.path.join(runs_dir)
     if not os.path.exists(directory):
         os.makedirs(directory)
     filename = os.path.join(directory, filename)
