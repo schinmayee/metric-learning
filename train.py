@@ -120,6 +120,11 @@ def main():
         Net = model_net.InceptionBased
         # force image size to be 299
         im_size = 299
+    elif args.network == 'Squeeze':
+        print('Using squeezenet')
+        Net = model_net.SqueezeNetBased
+        # force image size to be 224
+        im_size = 224
     model = Net(feature_size=feature_size, im_size=im_size)
 
     # triplet loss
