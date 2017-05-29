@@ -121,5 +121,5 @@ class CUBTriplets(data.Dataset):
             a, c = pair
             anchor_class = self.labels[a]
             b = np.random.choice(np.where(self.labels == anchor_class)[0])
-            self.triplets.append(a, b, c)
+            self.triplets.append((a, b, c))
         np.random.shuffle(self.triplets)

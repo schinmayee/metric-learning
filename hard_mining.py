@@ -81,6 +81,6 @@ class NHardestTripletSampler(Sampler):
         l = len(self.negatives)
         assert(l >= num)
         # sort by distance between anchor and negative
-        sorted_indices = np.argsort(dist_neg)
+        sorted_indices = np.argsort(self.dist_neg)
         sel_indices = sorted_indices[0:num]
         return ([self.negatives[i] for i in sel_indices])
