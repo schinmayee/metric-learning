@@ -35,85 +35,52 @@ class Sampler(object):
         pass
 
     """
-    Call this after every batch to generate a list of hard positives.
-    """
-    def SamplePositives(self, dista, distb, triplet_loss, ids):
-        print("Implement me!!")
-        pass
-
-    """
-    Call this when regenerating list of triplets, to get a set of negative pairs,
-    or triplets with negative examples.
+    Call this when regenerating list of triplets, to get a set of negative pairs.
     """
     # TODO: may want to update the signature.
     def ChooseNegatives(self, num):
         print("Implement me!!")
         pass
 
-    """
-    Call this when regenerating list of triplets, to get a set of positive pairs,
-    or triplets with positive examples.
-    """
-    # TODO: may want to update the signature.
-    def ChoosePositives(self, num):
-        print("Implement me!!")
-        pass
-
 """
 Get N hardest:
-Every time SampleNegatives or SamplePositives is invoked, this chooses the
-triplets with N hardest positives and N hardest negatives.
-When ChooseNegatives or ChoosePositives is invoked, this returns a random
-set of triplets from the sampled triplets.
+Every time SampleNegatives is invoked, this chooses the
+triplets with N hardest negatives from a set of already constructred triplets,
+such as the triplets used in training/
+When ChooseNegatives is invoked, this returns a set of hard negatives from
+triplets that it has seen before.
 """
 class NHardestTripletSampler(Sampler):
     def __init__(self, num_classes, num_samples):
         super(NHardestTripletSampler, self).__init__(num_classes, num_samples)
         self.negatives = []
-        self.positives = []
+        self.dist_neg = []
 
     def Reset(self):
         self.negatives = []
-        self.positives = []
+        self.dist_neg = []
 
     """
     Negatives with least distb.
     """
     def SampleNegatives(self, dista, distb, triplet_loss, ids):
+        assert(self.num_samples <= dista.size()[0])
         idx1, idx2, idx3 = ids
+        # sort by distance between anchor and negative
         sortd, indices = torch.sort(distb, descending=False, dim=0)
         sel_indices = indices[0:self.num_samples].data.numpy().reshape((self.num_samples))
         anchor = idx1.numpy()[sel_indices].reshape((self.num_samples))
-        pos    = idx2.numpy()[sel_indices].reshape((self.num_samples))
         negs   = idx3.numpy()[sel_indices].reshape((self.num_samples))
-        self.negatives += zip(anchor, pos, negs)
-
-    """
-    Positives with max dista.
-    """
-    def SamplePositives(self, dista, distb, triplet_loss, ids):
-        idx1, idx2, idx3 = ids
-        sortd, indices = torch.sort(dista, descending=True, dim=0)
-        sel_indices = indices[0:self.num_samples].data.numpy().reshape((self.num_samples))
-        anchor = idx1.numpy()[sel_indices].reshape((self.num_samples))
-        pos    = idx2.numpy()[sel_indices].reshape((self.num_samples))
-        negs   = idx3.numpy()[sel_indices].reshape((self.num_samples))
-        self.positives += zip(anchor, pos, negs)
+        self.negatives += zip(anchor, negs)
+        self.dist_neg += list(sortd.data.numpy()[sel_indices].reshape((self.num_samples)))
 
     """
     Now get some triplets for regenerating triplets.
     """
     def ChooseNegatives(self, num):
         l = len(self.negatives)
-        # we could sort here but I am just going to select randomly -- chinmayee
-        indices = np.random.choice(l, num, replace=True)
-        return ([self.negatives[i] for i in indices])
-
-    """
-    Now get some triplets for regenerating triplets.
-    """
-    def ChoosePositives(self, num):
-        l = len(self.positives)
-        # we could sort here but I am just going to select randomly -- chinmayee
-        indices = np.random.choice(l, num, replace=True)
-        return ([self.positives[i] for i in indices])
+        assert(l >= num)
+        # sort by distance between anchor and negative
+        sorted_indices = np.argsort(dist_neg)
+        sel_indices = sorted_indices[0:num]
+        return ([self.negatives[i] for i in sel_indices])

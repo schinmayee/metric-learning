@@ -99,8 +99,9 @@ class CUBTriplets(data.Dataset):
             c = np.random.choice(np.where(self.labels!=class_idx)[0],
                                  int(ntriplets/nc), replace=True)
 
-            for i in range(a.shape[0]):
-                self.triplets.append((a[i], b[i], c[i]))
+            #for i in range(a.shape[0]):
+            #    self.triplets.append((a[i], b[i], c[i]))
+            self.triplets += zip(a,b,c)
         np.random.shuffle(self.triplets)
 
         print('Done!')
@@ -114,6 +115,11 @@ class CUBTriplets(data.Dataset):
         num_hard = self.num_triplets - num_random_triplets
         print("Number of hard triplets %d ..." % num_hard)
         self.make_triplet_list(num_random_triplets)
-        neg_hard_triplets = sampler.ChooseNegatives(num_hard)
-        self.triplets += neg_hard_triplets
+        neg_hard_examples = sampler.ChooseNegatives(num_hard)
+        # choose random positives (for now atleast) for hard negatives
+        for pair in neg_hard_examples:
+            a, c = pair
+            anchor_class = self.labels[a]
+            b = np.random.choice(np.where(self.labels == anchor_class)[0])
+            self.triplets.append(a, b, c)
         np.random.shuffle(self.triplets)

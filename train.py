@@ -125,6 +125,11 @@ def main():
         Net = model_net.SqueezeNetBased
         # force image size to be 224
         im_size = 224
+    elif args.network == 'Shallow':
+        print('Using shallownet')
+        Net = model_net.ShallowNet
+        # force image size to be 96
+        im_size = 96
     model = Net(feature_size=feature_size, im_size=im_size)
 
     # triplet loss
@@ -304,7 +309,7 @@ def ComputeClusters(test_loader, enet, num_clusters):
 
     kmeans_model = KMeans(n_clusters=num_clusters, random_state=1,
                           max_iter=1000, tol=1e-3,
-                          init=initial_centers)
+                          init=initial_centers, n_init=1)
     labels_predicted = kmeans_model.fit_predict(embeddings)
     
     #print('Labels true')
