@@ -3,6 +3,7 @@ import os
 import shutil
 import time
 
+import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -77,15 +78,9 @@ parser.add_argument('--log-interval', type=int, default=2,
 parser.add_argument('--feature-size', type=int, default=64,
         help='size for embeddings/features to learn')
 
-# globals
-best_acc = 0
-best_precision = 0
-best_recall = 0
-best_f1 = 0
-
+# parameters
 feature_size = 0
 
-# parameters
 im_size = 64
 num_train=4
 num_val=4
@@ -99,24 +94,36 @@ hard_frac = 0.5
 
 OurSampler = hard_mining.NHardestTripletSampler
 
-runs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                        ('runs/r-%s' % time.strftime('%m-%d-%H-%M')))
+# globals
+best_acc = 0
+best_precision = 0
+best_recall = 0
+best_f1 = 0
+best_model = None
+
+runs_dir = ''
 
 epochs = list()
 train_losses = list()
-test_losses = list()
+val_losses = list()
 triplet_accs = list()
 classification_accs = list()
 
 # main
 def main():
     global args, feature_size, im_size
-    global best_acc, best_precision, best_recall, best_f1
-    global epochs, train_losses, test_losses
+    global best_acc, best_precision, best_recall, best_f1, best_model
+    global epochs, train_losses, val_losses
     global triplet_accs, classification_accs
+    global runs_dir
 
     args = parser.parse_args()
     assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
+    
+    runs_dir = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            ('runs/r-%s-%s-%s' %
+                (args.network, args.loss, time.strftime('%m-%d-%H-%M'))))
 
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -224,18 +231,23 @@ def main():
     sampler = OurSampler(len(train_classes),
                          int((hard_frac+hard_frac/2)*args.batch_size))
     
+    labels_true = None
+    labels_predicted = None
+
     for epoch in range(1, args.epochs + 1):
         # train for one epoch
         train_loss = Train(train_loader, tnet, criterion, optimizer, epoch, sampler)
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
-            test_loss, triplet_acc = TestTriplets(val_loader_t, tnet, criterion)
-            test_results = ComputeClusters(val_loader, model, len(val_classes))
-            acc = test_results['accuracy']
-            precision = test_results['precision']
-            recall = test_results['recall']
-            f1 = test_results['f1']
+            val_loss, triplet_acc = TestTriplets(val_loader_t, tnet, criterion)
+            val_results = ComputeClusters(val_loader, model, len(val_classes))
+            acc = val_results['accuracy']
+            precision = val_results['precision']
+            recall = val_results['recall']
+            f1 = val_results['f1']
+            labels_true = val_results['true']
+            labels_predicted = val_results['predicted']
 
             # remember best acc and save checkpoint
             is_best = acc > best_acc
@@ -244,6 +256,7 @@ def main():
                 best_precision = precision
                 best_recall = recall
                 best_f1 = f1
+                best_model = copy.deepcopy(model)
 
             
             print('Best cluster: Accuracy %f, Precision %f, Recall %f, F1 %f\n' % (
@@ -259,7 +272,7 @@ def main():
             #   2. triplet and cluster based classification accuracy on validation set
             epochs.append(epoch)
             train_losses.append(train_loss)
-            test_losses.append(test_loss)
+            val_losses.append(val_loss)
             triplet_accs.append(triplet_acc)
             classification_accs.append(acc)
             
@@ -273,20 +286,20 @@ def main():
         # save final results and plot loss/accuracy with training
         if epoch % args.results_freq == 0:
             print('Results are being saved to %s' % runs_dir)
-            with open(os.path.join(runs_dir, 'classification'), 'w') as r:
-                r.write('network : %s\n' % args.network)
-                r.write('loss : %s\n' % args.loss)
-                r.write('best accuracy : %f\n' % best_acc)
-                r.write('best precision : %f\n' % best_precision)
-                r.write('best recall : %f\n' % best_recall)
-                r.write('best f1 : %f\n' % best_f1)
-            utils.SavePlots(runs_dir, epochs, train_losses, test_losses,
+            utils.SavePlots(runs_dir, epochs, train_losses, val_losses,
                             triplet_accs, classification_accs)
             pickle.dump(epochs, open(os.path.join(runs_dir, 'epochs'), 'w'))
             pickle.dump(train_losses, open(os.path.join(runs_dir, 'train_losses'), 'w'))
-            pickle.dump(test_losses, open(os.path.join(runs_dir, 'test_losses'), 'w'))
+            pickle.dump(val_losses, open(os.path.join(runs_dir, 'val_losses'), 'w'))
             pickle.dump(triplet_accs, open(os.path.join(runs_dir, 'triplet_accs'), 'w'))
             pickle.dump(classification_accs, open(os.path.join(runs_dir, 'classification_accs'), 'w'))
+
+            # at the end, save some query results for visualization
+            val_results = ComputeClusters(val_loader, best_model, len(val_classes))
+            SaveClusterResults(runs_dir, 'val', val_results)
+
+            # TODO: also run the model and kmeans over test data and
+            # save the results over test data
             
 
 def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
@@ -361,23 +374,41 @@ def ComputeClusters(test_loader, enet, num_clusters):
         labels_true[ids.numpy()] = classes.numpy()
     print('Generated embeddings, now running k-means for %d clusters...' % num_clusters)
 
-    # map classes to (0,N)
-    # also get initial centroids
-    labels_copy = np.copy(labels_true)
-    unique_classes = np.unique(labels_copy)
-    classes_mapped = np.arange(0,len(unique_classes),1)
+    # initialize centroid  for each cluster
+    unique_classes = np.unique(labels_true)
+    num_classes = len(unique_classes)
     initial_centers = np.zeros(shape=(num_clusters, feature_size), dtype=float)
-    for i in range(len(unique_classes)):
-        c_ids = np.where(labels_copy == unique_classes[i])
-        labels_true[c_ids] = classes_mapped[i]
+    for i in range(num_classes):
+        c_ids = np.where(labels_true == unique_classes[i])
         use_im = np.random.choice(c_ids[0])
-        #print(embeddings[use_im,:])
         initial_centers[i,:] = embeddings[use_im,:]
 
     kmeans_model = KMeans(n_clusters=num_clusters, random_state=1,
                           max_iter=1000, tol=1e-3,
                           init=initial_centers, n_init=1)
     labels_predicted = kmeans_model.fit_predict(embeddings)
+
+    # map predicted clusters to actual class ids
+    cluster_to_class = np.zeros(shape=(num_classes,), dtype=int)
+    for i in range(num_classes):
+        # figure out which class this cluster must be
+        # set of points that belong to this cluster
+        cluster_points = np.where(labels_predicted == i)
+        # true class labels for these points
+        actual_labels = labels_true[cluster_points]
+        # map cluster to most frequently occuring class
+        unique, indices = np.unique(actual_labels, return_inverse=True)
+        mode = unique[np.argmax(
+            np.apply_along_axis(
+                np.bincount, 0, indices.reshape(actual_labels.shape),
+                None, np.max(indices) + 1), axis=0)]
+        cluster_to_class[i] = mode
+
+    # map cluster id to class ids
+    labels_copy = np.copy(labels_predicted)
+    for i in range(num_classes):
+        cluster_points = np.where(labels_copy == i)
+        labels_predicted[cluster_points] = cluster_to_class[i]
     
     #print('Labels true')
     #print(labels_true)
@@ -408,6 +439,14 @@ def ComputeClusters(test_loader, enet, num_clusters):
                 'f1' : f1_score
               }
     return  results
+
+
+def SaveClusterResults(base_dir, prefix, results):
+    with open(os.path.join(base_dir, '%s_stats' % prefix), 'w') as r:
+        r.write('best accuracy : %f\n' % results['accuracy'])
+        r.write('best precision : %f\n' % results['precision'])
+        r.write('best recall : %f\n' % results['recall'])
+        r.write('best f1 : %f\n' % results['f1'])
     
 
 def TestTriplets(test_loader, tnet, criterion):
