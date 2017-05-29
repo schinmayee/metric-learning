@@ -37,6 +37,7 @@ class CUBImages(data.Dataset):
         boxes = [[int(round(float(c))) for c in line.split()[1:]] for line in
                  open(os.path.join(root, 'bounding_boxes.txt'),'r')]
         name_to_id = dict(zip(birdnames, range(len(birdnames))))
+        self.birdnames = birdnames
 
         # which classes to include
         self.classes = classes

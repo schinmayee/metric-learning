@@ -296,7 +296,7 @@ def main():
 
             # at the end, save some query results for visualization
             val_results = ComputeClusters(val_loader, best_model, len(val_classes))
-            SaveClusterResults(runs_dir, 'val', val_results)
+            SaveClusterResults(runs_dir, 'val', val_results, val_data_set)
 
             # TODO: also run the model and kmeans over test data and
             # save the results over test data
@@ -441,12 +441,37 @@ def ComputeClusters(test_loader, enet, num_clusters):
     return  results
 
 
-def SaveClusterResults(base_dir, prefix, results):
+def SaveClusterResults(base_dir, prefix, results, data_set):
+    # first save stats
     with open(os.path.join(base_dir, '%s_stats' % prefix), 'w') as r:
         r.write('best accuracy : %f\n' % results['accuracy'])
         r.write('best precision : %f\n' % results['precision'])
         r.write('best recall : %f\n' % results['recall'])
         r.write('best f1 : %f\n' % results['f1'])
+    # now choose a random image from each class and find which points are in
+    # the cluster that the image lies in
+    labels_true = results['true']
+    labels_pred = results['predicted']
+    unique = np.unique(labels_true)
+    num_classes = len(unique)
+    paths = data_set.images
+    birdnames = data_set.birdnames
+    with open(os.path.join(base_dir, '%s_query' % prefix), 'w') as r:
+        for i in range(num_classes):
+            cid = unique[i]
+            # query image
+            idq = np.random.choice(np.where(labels_true == cid)[0])
+            # predicted class/cluster
+            class_pred = labels_pred[idq]
+            # more images from the same cluster
+            id_res = np.random.choice(np.where(labels_pred == class_pred)[0], 5)
+            r.write(paths[idq])
+            r.write(':'+birdnames[cid])
+            for k in range(5):
+                r.write(', ')
+                r.write(paths[id_res[k]])
+                r.write(':'+birdnames[labels_true[id_res[k]]])
+            r.write('\n')
     
 
 def TestTriplets(test_loader, tnet, criterion):
