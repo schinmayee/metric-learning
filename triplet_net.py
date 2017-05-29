@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class Tripletnet(nn.Module):
+class TripletNet(nn.Module):
     def __init__(self, embeddingnet):
-        super(Tripletnet, self).__init__()
+        super(TripletNet, self).__init__()
         self.embeddingnet = embeddingnet
 
     def forward(self, x, y, z):

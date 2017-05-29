@@ -77,9 +77,12 @@ feature_size = 0
 
 # parameters
 im_size = 64
-train_classes=range(8)  # multiple of 4
-val_classes=range(8,12)
-test_classes=range(12,16)
+num_train=4
+num_val=4
+num_test=1
+train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
+val_classes=range(num_train,num_train+num_val)
+test_classes=range(num_train+num_val,num_train+num_val+num_test)
 
 triplets_per_class=16  # keep at least 16 triplets per class, later increase to 32/64
 hard_frac = 0.5
@@ -91,7 +94,7 @@ runs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
 
 # main
 def main():
-    global args, best_acc, feature_size
+    global args, best_acc, feature_size, im_size
 
     args = parser.parse_args()
 
@@ -105,6 +108,24 @@ def main():
 
     # feature size
     feature_size = args.feature_size
+
+    # network
+    Net = None
+    model = None
+    if args.network == 'Simple':
+        print('Using simple net')
+        Net = model_net.SimpleNet
+    elif args.network == 'Inception':
+        print('Using inception net')
+        Net = model_net.InceptionBased
+        # force image size to be 299
+        im_size = 299
+    model = Net(feature_size=feature_size, im_size=im_size)
+
+    # triplet loss
+    tnet = triplet_net.TripletNet(model)
+    if args.cuda:
+        tnet.cuda()
 
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -139,18 +160,6 @@ def main():
             val_data_set, batch_size=args.batch_size, shuffle=False, 
             sampler=torch.utils.data.sampler.SequentialSampler(val_data_set),
             **kwargs)
-
-    # network
-    Net = None
-    if args.network == 'Simple':
-        print('Using simple net')
-        Net = model_net.Simplenet
-    model = Net(feature_size=feature_size, im_len=im_size)
-
-    # triplet loss
-    tnet = triplet_net.Tripletnet(model)
-    if args.cuda:
-        tnet.cuda()
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -305,12 +314,23 @@ def ComputeClusters(test_loader, enet, num_clusters):
                                        average='micro')
     recall = metrics.recall_score(labels_true, labels_predicted,
                                   average='micro')
+    f1_score = 2*precision*recall/(precision+recall)
 
     print('Accuracy : %f' % acc)
     print('NMI : %f' % nmi)
     print('Precision : %f' % precision)
     print('Recall : %f' % recall)
+    print('F1 score : %f' % f1_score)
     print("")
+    results = {
+                'true' : labels_true,
+                'predicted' : labels_predicted,
+                'accuracy' : acc,
+                'precision' : precision,
+                'recall' : recall,
+                'f1' : f1_score
+              }
+    return 
     
 
 def TestTriplets(test_loader, tnet, criterion):
