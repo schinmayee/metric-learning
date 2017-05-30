@@ -481,7 +481,8 @@ def ComputeClusters(test_loader, enet, num_clusters):
                 'accuracy' : acc,
                 'precision' : precision,
                 'recall' : recall,
-                'f1' : f1_score
+                'f1' : f1_score,
+                'nmi' : nmi
               }
     return  results
 
