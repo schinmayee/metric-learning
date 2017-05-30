@@ -69,7 +69,7 @@ parser.add_argument('--loss', type=str, default='HingeL2',
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
-parser.add_argument('--triplet_freq', type=int, default=10,
+parser.add_argument('--triplet-freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
@@ -198,6 +198,7 @@ def main():
         assert(False)
     if args.cuda:
         tnet.cuda()
+    tnet.eval()
 
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -235,14 +236,6 @@ def main():
             sampler=torch.utils.data.sampler.SequentialSampler(val_data_set),
             **kwargs)
 
-    test_data_set_t = TLoader(data_path,
-                              n_triplets=triplets_per_class*len(test_classes),
-                              transform=transforms.Compose([
-                                transforms.ToTensor(),
-                              ]),
-                              classes=test_classes, im_size=im_size)
-    test_loader_t = torch.utils.data.DataLoader(
-        test_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
     test_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
