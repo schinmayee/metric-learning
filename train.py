@@ -69,7 +69,7 @@ parser.add_argument('--loss', type=str, default='HingeL2',
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
-parser.add_argument('--triplet_freq', type=int, default=10,
+parser.add_argument('--triplet-freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
