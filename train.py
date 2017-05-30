@@ -139,8 +139,8 @@ def main():
     
     runs_dir = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
-            ('runs/r-%s-%s-%s' %
-                (args.network, args.loss, time.strftime('%m-%d-%H-%M'))))
+            ('runs/r-%s-%s-f%d-%s' %
+                (args.network, args.loss, args.feature_size, time.strftime('%m-%d-%H-%M'))))
 
     # train/val/test split
     if use_cmd_split:
