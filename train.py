@@ -27,8 +27,9 @@ import utils
 # networks
 import model_net
 
-# triplet loss
+# triplet and loss
 import triplet_net
+import losses
 
 # sampling
 import hard_mining
@@ -93,6 +94,9 @@ parser.add_argument('--num-test', type=int, default=2,
         help='Number of test classes')
 parser.add_argument('--triplets-per-class', type=int, default=16,
         help='Number of triplets per class')
+
+parser.add_argument('--in-triplet-hard', action='store_true', default=False,
+                    help='enables in triplet hard mining')
 
 # parameters
 feature_size = 0
@@ -192,11 +196,8 @@ def main():
     model = Net(feature_size=feature_size, im_size=im_size)
 
     # triplet loss
-    tnet = None
-    if args.loss == 'HingeL2':
-        tnet = triplet_net.HingeL2(model)
-    else:
-        assert(False)
+    tnet = triplet_net.TripletNet(model)
+
     if args.cuda:
         tnet.cuda()
     tnet.eval()
@@ -262,7 +263,12 @@ def main():
 
     cudnn.benchmark = True
 
-    criterion = torch.nn.MarginRankingLoss(margin = args.margin)
+    if args.loss == 'HingeL2':
+        if args.in_triplet_hard:
+            criterion = losses.SimpleHingeLossHardTriplet
+        else:
+            criterion = losses.SimpleHingeLoss
+
     net_params = tnet.SetLearningRate(args.lr*0.1, args.lr)
     optimizer = optim.Adam(net_params, lr=args.lr,
                            betas=[args.beta1,args.beta2])
@@ -361,7 +367,7 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
 
         # compute output
-        dista, distb, embedded_x, embedded_y, embedded_z = tnet(data1, data2, data3)
+        dista, distb, distc, embedded_x, embedded_y, embedded_z = tnet(data1, data2, data3)
         # 1 means, dista should be larger than distb
         target = torch.FloatTensor(dista.size()).fill_(1)
         if args.cuda:
@@ -369,15 +375,15 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         target = Variable(target)
         
         # forward pass
-        loss_triplet = criterion(dista, distb, target)
-        # sample hard ngatives based on loss
+        loss_triplet = criterion(dista, distb, distc, target, args.margin)
+        # sample hard ngatives based on loss TODO
         sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
         loss = loss_triplet + args.reg * loss_embedd
 
         # measure loss accuracy and record loss
-        loss_acc = LossAccuracy(dista, distb)
+        loss_acc = LossAccuracy(dista, distb, distc, args.margin)
         losses.update(loss_triplet.data[0], data1.size(0))
         loss_accs.update(loss_acc, data1.size(0))
         emb_norms.update(loss_embedd.data[0]/3, data1.size(0))
@@ -386,10 +392,6 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
-        # TODO: compute embeddings
-        # TODO: compute k-means cluster on training set
-        # TODO: determine hard negatives -- points in the wrong cluster
 
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{}]\t'
@@ -534,20 +536,23 @@ def TestTriplets(test_loader, tnet, criterion):
         data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
 
         # compute output
-        dista, distb, _, _, _ = tnet(data1, data2, data3)
+        dista, distb, distc, embedded_x, embedded_y, embedded_z = tnet(data1, data2, data3)
         target = torch.FloatTensor(dista.size()).fill_(1)
         if args.cuda:
             target = target.cuda()
         target = Variable(target)
-        test_loss =  criterion(dista, distb, target).data[0]
+        loss_triplet =  criterion(dista, distb, distc, target, args.margin).data[0]
+        
+        loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
+        test_loss = loss_triplet + args.reg * loss_embedd
 
         # measure accuracy and record loss
-        acc = LossAccuracy(dista, distb)
+        acc = LossAccuracy(dista, distb, distc, args.margin)
         accs.update(acc, data1.size(0))
-        losses.update(test_loss, data1.size(0))      
+        losses.update(test_loss.data[0], data1.size(0))      
 
-    print('\nTest/val triplets: Average loss: {:.4f}, Accuracy: {:.2f}%\n'.format(
-        losses.avg, 100. * accs.avg))
+    print('\nTest/val triplets: Average loss: %f, Accuracy: %f \n' %
+            (losses.avg, accs.avg))
     return losses.avg, accs.avg
 
 def SaveCheckpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -577,9 +582,14 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def LossAccuracy(dista, distb):
+def LossAccuracy(dista, distb, distc, margin):
     margin = 0
-    pred = (dista - distb - margin).cpu().data
+    if args.in_triplet_hard:
+        dist_neg = torch.cat([distb, distc], dim=1)
+        dist_neg = torch.min(dist_neg, dim=1)[0]
+    else:
+        dist_neg = distb
+    pred = (dista - dist_neg - margin).cpu().data
     return (pred > 0).sum()*1.0/dista.size()[0]
 
 if __name__ == '__main__':
