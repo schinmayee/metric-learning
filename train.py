@@ -499,6 +499,7 @@ def SaveClusterResults(base_dir, prefix, results, data_set):
         r.write('best precision : %f\n' % results['precision'])
         r.write('best recall : %f\n' % results['recall'])
         r.write('best f1 : %f\n' % results['f1'])
+        r.write('best nmi : %f\n' % results['nmi'])
     # now choose a random image from each class and find which points are in
     # the cluster that the image lies in
     labels_true = results['true']
