@@ -70,8 +70,8 @@ parser.add_argument('--triplet_freq', type=int, default=10,
                     help='epochs before new triplets list (default: 10)')
 parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
-parser.add_argument('--results-freq', type=int, default=10,
-        help='epochs before saving results (default: 10)')
+parser.add_argument('--results-freq', type=int, default=2,
+        help='epochs before saving results (default: 2)')
 
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
@@ -80,18 +80,29 @@ parser.add_argument('--log-interval', type=int, default=2,
 parser.add_argument('--feature-size', type=int, default=64,
         help='size for embeddings/features to learn')
 
+parser.add_argument('--num-train', type=int, default=4,
+        help='Number of train classes')
+parser.add_argument('--num-val', type=int, default=4,
+        help='Number of validation classes')
+parser.add_argument('--num-test', type=int, default=2,
+        help='Number of test classes')
+parser.add_argument('--triplets-per-class', type=int, default=16,
+        help='Number of triplets per class')
+
 # parameters
 feature_size = 0
 
 im_size = 64
-num_train=4
-num_val=4
-num_test=1
-train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
-val_classes=range(num_train,num_train+num_val)
-test_classes=range(num_train+num_val,num_train+num_val+num_test)
 
+use_cmd_split=True  # if false, set the following values to something meaningful
+num_train=0
+num_val=0
+num_test=0
+train_classes=None  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
+val_classes=None
+test_classes=None
 triplets_per_class=16  # keep at least 16 triplets per class, later increase to 32/64
+
 hard_frac = 0.5
 
 OurSampler = hard_mining.NHardestTripletSampler
@@ -118,14 +129,25 @@ def main():
     global epochs, train_losses, val_losses
     global triplet_accs, classification_accs
     global runs_dir
+    global num_train, num_val, num_test, triplets_per_class, use_cmd_split
+    global train_classes, val_classes, test_classes
 
     args = parser.parse_args()
-    assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
     
     runs_dir = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             ('runs/r-%s-%s-%s' %
                 (args.network, args.loss, time.strftime('%m-%d-%H-%M'))))
+
+    # train/val/test split
+    if use_cmd_split:
+        num_train=args.num_train
+        num_val=args.num_val
+        num_test=args.num_test
+        train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
+        val_classes=range(num_train,num_train+num_val)
+        test_classes=range(num_train+num_val,num_train+num_val+num_test)
+    assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
 
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
