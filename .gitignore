@@ -103,3 +103,4 @@ ENV/
 # datasets and runs
 datasets/
 runs/
+results/
