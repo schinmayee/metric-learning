@@ -31,6 +31,10 @@ class SimpleNet(nn.Module):
         x = F.dropout(x, training=self.training)
         return self.fc2(x)
 
+    def SetLearningRate(self, lr1, lr2):
+        d = [{ 'params' : self.parameters(), 'lr': lr2 }]
+        return d
+
 class ShallowNet(nn.Module):
     def __init__(self, feature_size=64, im_size=96):
         super(ShallowNet, self).__init__()
@@ -60,6 +64,10 @@ class ShallowNet(nn.Module):
         x = F.dropout(x, training=self.training)
         return self.fc2(x)
 
+    def SetLearningRate(self, lr1, lr2):
+        d = [{ 'params' : self.parameters(), 'lr': lr2 }]
+        return d
+
 class InceptionBased(nn.Module):
     def __init__(self, feature_size=64, im_size=299):
         super(InceptionBased, self).__init__()
@@ -75,6 +83,13 @@ class InceptionBased(nn.Module):
             return y[0]
         else:
             return y
+
+    def SetLearningRate(self, lr1, lr2):
+        d = [
+                { 'params' : self.inception.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.fc.parameters(), 'lr': lr2 },
+            ]
+        return d
 
 class SqueezeNetBased(nn.Module):
     def __init__(self, feature_size=64, im_size=224):
@@ -95,3 +110,10 @@ class SqueezeNetBased(nn.Module):
         x = self.features(x)
         x = self.classifier(x)
         return x.view(-1, self.feature_size)
+
+    def SetLearningRate(self, lr1, lr2):
+        d = [
+                { 'params' : self.features.parameters(), 'lr': lr1 },
+                { 'params' : self.classifier.parameters(), 'lr': lr2 },
+            ]
+        return d

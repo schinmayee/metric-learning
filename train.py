@@ -263,7 +263,8 @@ def main():
     cudnn.benchmark = True
 
     criterion = torch.nn.MarginRankingLoss(margin = args.margin)
-    optimizer = optim.Adam(tnet.parameters(), lr=args.lr,
+    net_params = tnet.SetLearningRate(args.lr*0.1, args.lr)
+    optimizer = optim.Adam(net_params, lr=args.lr,
                            betas=[args.beta1,args.beta2])
 
     n_parameters = sum([p.data.nelement() for p in tnet.parameters()])

@@ -14,3 +14,6 @@ class HingeL2(nn.Module):
         dist_a = F.pairwise_distance(embedded_x, embedded_y, 2)
         dist_b = F.pairwise_distance(embedded_x, embedded_z, 2)
         return dist_a, dist_b, embedded_x, embedded_y, embedded_z
+
+    def SetLearningRate(self, lr1, lr2):
+        return self.embeddingnet.SetLearningRate(lr1, lr2)
