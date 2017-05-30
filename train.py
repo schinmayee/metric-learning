@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import matplotlib
+matplotlib.use('Agg')
+
 import argparse
 import os
 import shutil
@@ -389,13 +392,13 @@ def ComputeClusters(test_loader, enet, num_clusters):
     labels_true = np.zeros(shape=(len(test_loader.dataset)), dtype=int)
     for batch_idx, (data, classes, ids) in enumerate(test_loader):
         if args.cuda:
-            data1 = data.cuda()
+            data = data.cuda()
         data = Variable(data)
 
         # compute embeddings
         f = enet(data)
-        embeddings[ids.numpy(),:] = f.data.numpy()
-        labels_true[ids.numpy()] = classes.numpy()
+        embeddings[ids.numpy(),:] = f.cpu().data.numpy()
+        labels_true[ids.numpy()] = classes.cpu().numpy()
     print('Generated embeddings, now running k-means for %d clusters...' % num_clusters)
 
     # initialize centroid  for each cluster

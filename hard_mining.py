@@ -9,7 +9,6 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import torch.backends.cudnn as cudnn
-from visdom import Visdom
 import numpy as np
 from random import shuffle
 
@@ -64,6 +63,9 @@ class NHardestTripletSampler(Sampler):
     Negatives with least distb.
     """
     def SampleNegatives(self, dista, distb, triplet_loss, ids):
+        dista = dista.cpu()
+        distb = distb.cpu()
+        triplet_loss = triplet_loss.cpu()
         assert(self.num_samples <= dista.size()[0])
         idx1, idx2, idx3 = ids
         # sort by distance between anchor and negative
