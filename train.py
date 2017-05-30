@@ -106,7 +106,7 @@ num_test=0
 train_classes=None  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
 val_classes=None
 test_classes=None
-triplets_per_class=16  # keep at least 16 triplets per class, later increase to 32/64
+triplets_per_class=0  # keep at least 16 triplets per class, later increase to 32/64
 
 hard_frac = 0.5
 
@@ -152,6 +152,7 @@ def main():
         train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
         val_classes=range(num_train,num_train+num_val)
         test_classes=range(num_train+num_val,num_train+num_val+num_test)
+        triplets_per_class=args.triplets_per_class
     assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
 
     # cuda
