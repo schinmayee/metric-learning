@@ -75,6 +75,8 @@ parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
 parser.add_argument('--results-freq', type=int, default=2,
         help='epochs before saving results (default: 2)')
+parser.add_argument('--test-results-freq', type=int, default=10,
+        help='epochs before saving results (default: 10)')
 
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
@@ -233,6 +235,24 @@ def main():
             sampler=torch.utils.data.sampler.SequentialSampler(val_data_set),
             **kwargs)
 
+    test_data_set_t = TLoader(data_path,
+                              n_triplets=triplets_per_class*len(test_classes),
+                              transform=transforms.Compose([
+                                transforms.ToTensor(),
+                              ]),
+                              classes=test_classes, im_size=im_size)
+    test_loader_t = torch.utils.data.DataLoader(
+        test_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
+    test_data_set = DLoader(data_path,
+                           transform=transforms.Compose([
+                             transforms.ToTensor(),
+                           ]),
+                           classes=test_classes, im_size=im_size)
+    test_loader = torch.utils.data.DataLoader(
+            test_data_set, batch_size=args.batch_size, shuffle=False, 
+            sampler=torch.utils.data.sampler.SequentialSampler(test_data_set),
+            **kwargs)
+
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -325,8 +345,12 @@ def main():
             val_results = ComputeClusters(val_loader, best_model, len(val_classes))
             SaveClusterResults(runs_dir, 'val', val_results, val_data_set)
 
-            # TODO: also run the model and kmeans over test data and
-            # save the results over test data
+        if epoch % args.test_results_freq == 0:
+            # also run the model and kmeans over test data and save the results
+            # over test data, BUT DO NOT use this for tuning hyper-parameters
+            print('Saving test results!!')
+            test_results = ComputeClusters(test_loader, best_model, len(test_classes))
+            SaveClusterResults(runs_dir, 'test', test_results, test_data_set)
             
 
 def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
