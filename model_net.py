@@ -69,7 +69,12 @@ class InceptionBased(nn.Module):
         self.inception.fc = nn.Linear(2048, feature_size)
 
     def forward(self, x):
-        return self.inception(x)[0]
+        y = self.inception(x)
+        # weird result in training mode, probably a bug in inception module?
+        if self.training:
+            return y[0]
+        else:
+            return y
 
 class SqueezeNetBased(nn.Module):
     def __init__(self, feature_size=64, im_size=224):
