@@ -86,7 +86,23 @@ class InceptionBased(nn.Module):
 
     def SetLearningRate(self, lr1, lr2):
         d = [
-                { 'params' : self.inception.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Conv2d_1a_3x3.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Conv2d_2a_3x3.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Conv2d_2b_3x3.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Conv2d_3b_1x1.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Conv2d_4a_3x3.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_5b.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_5c.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_5d.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_6a.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_6b.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_6c.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_6d.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_6e.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.AuxLogits.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_7a.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_7b.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_7c.parameters(), 'lr': lr1 },
                 { 'params' : self.inception.fc.parameters(), 'lr': lr2 },
             ]
         return d
