@@ -20,6 +20,7 @@ def ImshowNoax(img, normalize=True):
 def SaveQuery(base_dir, line, result_img):
     tokens = line.split(',')
     if (len(tokens)!=6):
+        print('Skipping ' + line)
         return
     for i in range(6):
         im_meta = tokens[i].split(':')
