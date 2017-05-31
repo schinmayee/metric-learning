@@ -15,7 +15,7 @@ from random import shuffle
 """
 Base class for sampling.
 """
-class Sampler(object):
+class TripletSampler(object):
     def __init__(self, num_classes, num_samples):
         self.num_classes = int(num_classes)
         self.num_samples = int(num_samples)
@@ -49,7 +49,7 @@ such as the triplets used in training/
 When ChooseNegatives is invoked, this returns a set of hard negatives from
 triplets that it has seen before.
 """
-class NHardestTripletSampler(Sampler):
+class NHardestTripletSampler(TripletSampler):
     def __init__(self, num_classes, num_samples):
         super(NHardestTripletSampler, self).__init__(num_classes, num_samples)
         self.negatives = []
@@ -89,7 +89,7 @@ class NHardestTripletSampler(Sampler):
 Semihard sampler -- selects examples where distance between anchor and negative
 is less than the distance between anchor and positive.
 """
-class SemiHardTripletSampler(Sampler):
+class SemiHardTripletSampler(TripletSampler):
     def __init__(self, num_classes, num_samples):
         super(SemiHardTripletSampler, self).__init__(num_classes, num_samples)
         self.negatives = []
@@ -115,6 +115,42 @@ class SemiHardTripletSampler(Sampler):
     """
     Now get some triplets for regenerating triplets.
     """
+    def ChooseNegatives(self, num):
+        sel_indices = np.random.choice(range(len(self.negatives)), num)
+        return ([self.negatives[i] for i in sel_indices])
+
+"""
+Classification based sampler.
+"""
+class ClassificationBasedSampler(object):
+    def __init__(self, num_classes, num_samples):
+        self.num_classes = int(num_classes)
+        self.num_samples = int(num_samples)
+        self.negatives = []
+
+    def Reset(self):
+        self.negatives = []
+
+    def SampleNegatives(self, labels_true, labels_pred):
+        neg_indices = np.where(labels_true != labels_pred)[0]
+        true_classes = labels_true[neg_indices]
+        pred_classes = labels_pred[neg_indices]  # what cluster does this point falsely belong to?
+
+        cor_indices = np.where(labels_true == labels_pred)[0]  # some points correctly clustered
+        cor_classes = labels_true[cor_indices]
+        anchor_candidates = dict()
+        for c in np.unique(cor_classes):
+            subset_indices = np.where(cor_classes == c)[0]
+            anchor_candidates[c] = cor_indices[subset_indices]
+
+        # now get an anchor point (a correct point correctly there in that cluster)
+        for i in np.random.permutation(len(neg_indices)):
+            pred_class = pred_classes[i]  # predicted class for incorrectly classified point
+            if pred_class in anchor_candidates.keys():  # there is an anchor point, a point correctly sent to that class
+                self.negatives.append((np.random.choice(anchor_candidates[pred_class]), neg_indices[i]))
+            if len(self.negatives) == self.num_samples:
+                break
+
     def ChooseNegatives(self, num):
         sel_indices = np.random.choice(range(len(self.negatives)), num)
         return ([self.negatives[i] for i in sel_indices])

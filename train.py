@@ -227,6 +227,13 @@ def main():
         sampler = hard_mining.SemiHardTripletSampler(
                 len(train_classes),
                 int((hard_frac+hard_frac/2)*args.batch_size))
+    elif args.mining == 'KMeans':
+        sampler = hard_mining.ClassificationBasedSampler(
+                len(train_classes),
+                int((hard_frac+hard_frac/2)*len(train_classes)*triplets_per_class)
+                )
+    else:
+        assert(False)
     
 
     # data
@@ -238,14 +245,23 @@ def main():
     else:
         assert(False)
 
-    train_data_set = TLoader(data_path,
+    train_data_set_t = TLoader(data_path,
                              n_triplets=triplets_per_class*len(train_classes),
                              transform=transforms.Compose([
                                transforms.ToTensor(),
                              ]),
                              classes=train_classes, im_size=im_size)
+    train_loader_t = torch.utils.data.DataLoader(
+        train_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
+    train_data_set = DLoader(data_path,
+                           transform=transforms.Compose([
+                             transforms.ToTensor(),
+                           ]),
+                           classes=train_classes, im_size=im_size)
     train_loader = torch.utils.data.DataLoader(
-        train_data_set, batch_size=args.batch_size, shuffle=True, **kwargs)
+            train_data_set, batch_size=args.batch_size, shuffle=False, 
+            sampler=torch.utils.data.sampler.SequentialSampler(train_data_set),
+            **kwargs)
 
     val_data_set_t = TLoader(data_path,
                               n_triplets=triplets_per_class*len(val_classes),
@@ -302,7 +318,7 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         # train for one epoch
-        train_loss = Train(train_loader, tnet, criterion, optimizer, epoch, sampler)
+        train_loss = Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler)
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
@@ -345,7 +361,13 @@ def main():
 
         # reset sampler and regenerate triplets every few epochs
         if epoch % args.triplet_freq == 0:
-            train_data_set.regenerate_triplet_list(sampler, hard_frac)
+            if args.mining == 'KMeans':
+                print('Generating cluster classification on training data ...')
+                train_results = ComputeClusters(train_loader, model, len(val_classes))
+                labels_true = train_results['true']
+                labels_pred = train_results['predicted']
+                sampler.SampleNegatives(labels_true, labels_pred)
+            train_data_set_t.regenerate_triplet_list(sampler, hard_frac)
             # then reset sampler
             sampler.Reset()
 
@@ -372,14 +394,14 @@ def main():
             SaveClusterResults(runs_dir, 'test', test_results, test_data_set)
             
 
-def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
+def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
     losses = AverageMeter()
     loss_accs = AverageMeter()
     emb_norms = AverageMeter()
     
     # switch to train mode
     tnet.train()
-    for batch_idx, (data1, data2, data3, idx1, idx2, idx3) in enumerate(train_loader):
+    for batch_idx, (data1, data2, data3, idx1, idx2, idx3) in enumerate(train_loader_t):
         if args.cuda:
             data1, data2, data3 = data1.cuda(), data2.cuda(), data3.cuda()
         data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
@@ -417,7 +439,7 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
                   'Loss: {:.4f} ({:.4f}) \t'
                   'Loss Acc: {:.2f}% ({:.2f}%) \t'
                   'Emb_Norm: {:.2f} ({:.2f})'.format(
-                epoch, batch_idx * len(data1), len(train_loader.dataset),
+                epoch, batch_idx * len(data1), len(train_loader_t.dataset),
                 losses.val, losses.avg, 
                 100. * loss_accs.val, 100. * loss_accs.avg,
                 emb_norms.val, emb_norms.avg))
