@@ -98,6 +98,8 @@ parser.add_argument('--triplets-per-class', type=int, default=16,
 
 parser.add_argument('--in-triplet-hard', action='store_true', default=False,
                     help='enables in triplet hard mining')
+parser.add_argument('--mining', type=str, default='Hardest',
+        help='Method to use for mining hard examples')
 
 # parameters
 feature_size = 0
@@ -115,8 +117,6 @@ triplets_per_class=0  # keep at least 16 triplets per class, later increase to 3
 
 hard_frac = 0.5
 
-OurSampler = hard_mining.NHardestTripletSampler
-
 # globals
 best_acc = 0
 best_precision = 0
@@ -132,6 +132,8 @@ val_losses = list()
 triplet_accs = list()
 classification_accs = list()
 
+sampler = None
+
 # main
 def main():
     global args, feature_size, im_size
@@ -141,6 +143,7 @@ def main():
     global runs_dir
     global num_train, num_val, num_test, triplets_per_class, use_cmd_split
     global train_classes, val_classes, test_classes
+    global Sampler
 
     args = parser.parse_args()
     
@@ -202,12 +205,29 @@ def main():
         assert(False)
     model = Net(feature_size=feature_size, im_size=im_size)
 
-    # triplet loss
+    # triplet network
     tnet = triplet_net.TripletNet(model)
 
     if args.cuda:
         tnet.cuda()
-    tnet.eval()
+
+    # loss to use
+    if args.loss == 'HingeL2':
+        if args.in_triplet_hard:
+            criterion = losses.SimpleHingeLossHardTriplet
+        else:
+            criterion = losses.SimpleHingeLoss
+
+    # sampler to use
+    if args.mining == 'Hardest':
+        sampler = hard_mining.NHardestTripletSampler(
+                len(train_classes),
+                int((hard_frac+hard_frac/2)*args.batch_size))
+    elif args.mining == 'SemiHard':
+        sampler = hard_mining.SemiHardTripletSampler(
+                len(train_classes),
+                int((hard_frac+hard_frac/2)*args.batch_size))
+    
 
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -270,12 +290,6 @@ def main():
 
     cudnn.benchmark = True
 
-    if args.loss == 'HingeL2':
-        if args.in_triplet_hard:
-            criterion = losses.SimpleHingeLossHardTriplet
-        else:
-            criterion = losses.SimpleHingeLoss
-
     net_params = tnet.SetLearningRate(args.lr*0.1, args.lr)
     optimizer = optim.Adam(net_params, lr=args.lr,
                            betas=[args.beta1,args.beta2])
@@ -283,9 +297,6 @@ def main():
     n_parameters = sum([p.data.nelement() for p in tnet.parameters()])
     print('  + Number of params: {}'.format(n_parameters))
 
-    sampler = OurSampler(len(train_classes),
-                         int((hard_frac+hard_frac/2)*args.batch_size))
-    
     labels_true = None
     labels_predicted = None
 
@@ -383,8 +394,9 @@ def Train(train_loader, tnet, criterion, optimizer, epoch, sampler):
         
         # forward pass
         loss_triplet = criterion(dista, distb, distc, target, args.margin)
-        # sample hard ngatives based on loss TODO
-        sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
+
+        if args.mining == 'Hardest' or args.mining == 'SemiHard':
+            sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
         loss = loss_triplet + args.reg * loss_embedd
