@@ -7,6 +7,7 @@ import argparse
 import os
 import shutil
 import time
+import sys
 
 import copy
 import torch
@@ -145,8 +146,14 @@ def main():
     
     runs_dir = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
-            ('runs/r-%s-%s-f%d-b%d-%s' %
-                (args.network, args.loss, args.feature_size, args.batch_size, time.strftime('%m-%d-%H-%M'))))
+            ('runs/r-%s-%s-f%d-%s' %
+                (args.network, args.loss, args.feature_size, time.strftime('%m-%d-%H-%M'))))
+    if not os.path.exists(runs_dir):
+        os.makedirs(runs_dir)
+    command = ' '.join(sys.argv)
+    with open(os.path.join(runs_dir, 'command.sh'), 'w') as c:
+        c.write(command)
+        c.write('\n')
 
     # train/val/test split
     if use_cmd_split:
