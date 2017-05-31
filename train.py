@@ -213,10 +213,9 @@ def main():
 
     # loss to use
     if args.loss == 'HingeL2':
-        if args.in_triplet_hard:
-            criterion = losses.SimpleHingeLossHardTriplet
-        else:
-            criterion = losses.SimpleHingeLoss
+        criterion = losses.SimpleHingeLoss
+    elif args.loss == 'SquareHingeL2':
+        criterion = losses.SimpleSquareHingeLoss
 
     # sampler to use
     if args.mining == 'Hardest':
@@ -415,7 +414,7 @@ def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
         target = Variable(target)
         
         # forward pass
-        loss_triplet = criterion(dista, distb, distc, target, args.margin)
+        loss_triplet = criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard)
 
         if args.mining == 'Hardest' or args.mining == 'SemiHard':
             sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
@@ -582,7 +581,7 @@ def TestTriplets(test_loader, tnet, criterion):
         if args.cuda:
             target = target.cuda()
         target = Variable(target)
-        loss_triplet =  criterion(dista, distb, distc, target, args.margin).data[0]
+        loss_triplet =  criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard).data[0]
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
         test_loss = loss_triplet + args.reg * loss_embedd
