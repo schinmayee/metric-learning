@@ -3,6 +3,7 @@
 import os
 import sys
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from scipy.misc import imread, imresize
 
@@ -19,7 +20,7 @@ def ImshowNoax(img, normalize=True):
 
 def SaveQuery(base_dir, line, result_img):
     tokens = line.split(',')
-    if (len(tokens)!=6):
+    if (len(tokens)!=7):
         print('Skipping ' + line)
         return
     for i in range(6):
@@ -27,9 +28,10 @@ def SaveQuery(base_dir, line, result_img):
         im_path = im_meta[0].strip()
         im_class = im_meta[1].strip()
         im = imread(os.path.join(base_dir, im_path))
-        plt.subplot(2,3,i+1)
+        plt.subplot(2,3,(i+3)%6+1)
         ImshowNoax(im, normalize=False)
-        plt.title(im_class)
+        plt.title('as:\n'.join(im_class.split('->')))
+    plt.tight_layout(pad=0.001)
     plt.savefig(result_img)
 
 if __name__ == '__main__':
@@ -45,6 +47,9 @@ if __name__ == '__main__':
     queries = args.queries
     base_dir = args.images
     results_dir = args.results
+
+    font = { 'size'   : 6 }
+    matplotlib.rc('font', **font)
 
     lines = open(queries).read()
     qnum = 1

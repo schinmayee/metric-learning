@@ -555,18 +555,26 @@ def SaveClusterResults(base_dir, prefix, results, data_set):
     with open(os.path.join(base_dir, '%s_query' % prefix), 'w') as r:
         for i in range(num_classes):
             cid = unique[i]
-            # query image
-            idq = np.random.choice(np.where(labels_true == cid)[0])
-            # predicted class/cluster
-            class_pred = labels_pred[idq]
-            # more images from the same cluster
-            id_res = np.random.choice(np.where(labels_pred == class_pred)[0], 5)
-            r.write(paths[idq])
-            r.write(':'+birdnames[cid])
-            for k in range(5):
+            # images predicted as cid
+            if cid in labels_pred:
+                idq1 = np.random.choice(np.where(labels_pred == cid)[0], 3)
+            else:
+                idq1 = np.random.choice(np.where(labels_true == cid)[0], 3)
+            class_pred1 = labels_pred[idq1]
+            # images that are cid
+            idq2 = np.random.choice(np.where(labels_true == cid)[0], 3)
+            for k in range(3):
+                r.write(paths[idq1[k]])
+                cc = labels_true[idq1[k]]
+                cp = labels_pred[idq1[k]]
+                r.write(':'+birdnames[cc]+' -> '+birdnames[cp])
                 r.write(', ')
-                r.write(paths[id_res[k]])
-                r.write(':'+birdnames[labels_true[id_res[k]]])
+            for k in range(3):
+                r.write(paths[idq2[k]])
+                cc = labels_true[idq2[k]]
+                cp = labels_pred[idq2[k]]
+                r.write(':'+birdnames[cc]+' -> '+birdnames[cp])
+                r.write(', ')
             r.write('\n')
     
 
