@@ -155,3 +155,32 @@ class SqueezeNetBased(nn.Module):
                 { 'params' : self.classifier.parameters(), 'lr': lr2 },
             ]
         return d
+
+class ResNetBased(nn.Module):
+    def __init__(self, feature_size=64, im_size=224, normalize=False):
+        super(ResNetBased, self).__init__()
+        self.normalize = normalize
+        self.im_size = 224
+        self.feature_size = feature_size
+        self.resnet = torchvision.models.resnet50(pretrained=True)
+        fc = nn.Linear(2048, feature_size)
+        self.resnet.fc = fc
+
+    def forward(self, x):
+        x = self.resnet(x)
+        if self.normalize:
+            return x/torch.norm(x,2,1).repeat(1, self.feature_size)
+        else:
+            return x
+
+    def SetLearningRate(self, lr1, lr2):
+        d = [
+                { 'params' : self.resnet.conv1.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.bn1.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.layer1.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.layer2.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.layer3.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.layer4.parameters(), 'lr': lr1 },
+                { 'params' : self.resnet.fc.parameters(), 'lr': lr2 },
+            ]
+        return d

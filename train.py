@@ -203,6 +203,11 @@ def main():
         Net = model_net.ShallowNet
         # force image size to be 96
         im_size = 96
+    elif args.network == 'ResNet':
+        print('Using resnet')
+        Net = model_net.ResNetBased
+        # force image size to be 224
+        im_size = 224
     else:
         assert(False)
     model = Net(feature_size=feature_size, im_size=im_size, normalize=args.normalize_features)
