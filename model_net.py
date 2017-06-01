@@ -4,8 +4,9 @@ import torch.nn.functional as F
 import torchvision
 
 class SimpleNet(nn.Module):
-    def __init__(self, feature_size=64, im_size=128):
+    def __init__(self, feature_size=64, im_size=128, normalize=False):
         super(SimpleNet, self).__init__()
+        self.normalize = normalize
         self.feature_size=feature_size
         self.im_size = im_size
         self.h1_len = (self.im_size-4)/2
@@ -29,15 +30,20 @@ class SimpleNet(nn.Module):
         x = x.view(-1, self.fc1_len)
         x = F.relu(self.bn3(self.fc1(x)))
         x = F.dropout(x, training=self.training)
-        return self.fc2(x)
+        x = self.fc2(x)
+        if self.normalize:
+            return x/torch.norm(x,2,1).repeat(1, self.feature_size)
+        else:
+            return x
 
     def SetLearningRate(self, lr1, lr2):
         d = [{ 'params' : self.parameters(), 'lr': lr2 }]
         return d
 
 class ShallowNet(nn.Module):
-    def __init__(self, feature_size=64, im_size=96):
+    def __init__(self, feature_size=64, im_size=96, normalize=False):
         super(ShallowNet, self).__init__()
+        self.normalize = normalize
         self.feature_size=feature_size
         self.im_size = im_size
         self.h1_len = (self.im_size-6)/2
@@ -62,15 +68,20 @@ class ShallowNet(nn.Module):
         x = x.view(-1, self.fc1_len)
         x = F.relu(self.bn3(self.fc1(x)))
         x = F.dropout(x, training=self.training)
-        return self.fc2(x)
+        x = self.fc2(x)
+        if self.normalize:
+            return x/torch.norm(x,2,1).repeat(1, self.feature_size)
+        else:
+            return x
 
     def SetLearningRate(self, lr1, lr2):
         d = [{ 'params' : self.parameters(), 'lr': lr2 }]
         return d
 
 class InceptionBased(nn.Module):
-    def __init__(self, feature_size=64, im_size=299):
+    def __init__(self, feature_size=64, im_size=299, normalize=False):
         super(InceptionBased, self).__init__()
+        self.normalize = normalize
         self.im_size = 299
         self.feature_size=feature_size
         self.inception = torchvision.models.inception_v3(pretrained=True)
@@ -80,9 +91,15 @@ class InceptionBased(nn.Module):
         y = self.inception(x)
         # weird result in training mode, probably a bug in inception module?
         if self.training:
-            return y[0]
+            if self.normalize:
+                return y[0]/torch.norm(y[0],2,1).repeat(1, self.feature_size)
+            else:
+                return y[0]
         else:
-            return y
+            if self.normalize:
+                return y/torch.norm(y,2,1).repeat(1, self.feature_size)
+            else:
+                return y
 
     def SetLearningRate(self, lr1, lr2):
         d = [
@@ -108,8 +125,9 @@ class InceptionBased(nn.Module):
         return d
 
 class SqueezeNetBased(nn.Module):
-    def __init__(self, feature_size=64, im_size=224):
+    def __init__(self, feature_size=64, im_size=224, normalize=False):
         super(SqueezeNetBased, self).__init__()
+        self.normalize = normalize
         self.im_size = 224
         self.feature_size = feature_size
         self.features = torchvision.models.squeezenet1_1(pretrained=True).features
@@ -125,7 +143,11 @@ class SqueezeNetBased(nn.Module):
     def forward(self, x):
         x = self.features(x)
         x = self.classifier(x)
-        return x.view(-1, self.feature_size)
+        x = x.view(-1, self.feature_size)
+        if self.normalize:
+            return x/torch.norm(x,2,1).repeat(1, self.feature_size)
+        else:
+            return x
 
     def SetLearningRate(self, lr1, lr2):
         d = [

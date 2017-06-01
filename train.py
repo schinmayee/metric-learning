@@ -96,6 +96,8 @@ parser.add_argument('--num-test', type=int, default=2,
 parser.add_argument('--triplets-per-class', type=int, default=16,
         help='Number of triplets per class')
 
+parser.add_argument('--normalize-features', action='store_true', default=False,
+                    help='normalize features')
 parser.add_argument('--in-triplet-hard', action='store_true', default=False,
                     help='enables in triplet hard mining')
 parser.add_argument('--mining', type=str, default='Hardest',
@@ -203,7 +205,7 @@ def main():
         im_size = 96
     else:
         assert(False)
-    model = Net(feature_size=feature_size, im_size=im_size)
+    model = Net(feature_size=feature_size, im_size=im_size, normalize=args.normalize_features)
 
     # triplet network
     tnet = triplet_net.TripletNet(model)
@@ -216,6 +218,10 @@ def main():
         criterion = losses.SimpleHingeLoss
     elif args.loss == 'SquareHingeL2':
         criterion = losses.SimpleSquareHingeLoss
+    elif args.loss == 'Ratio':
+        criterion = losses.RatioLoss
+    else:
+        assert(False)
 
     # sampler to use
     if args.mining == 'Hardest':
