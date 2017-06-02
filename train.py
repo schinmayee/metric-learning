@@ -373,7 +373,7 @@ def main():
         if epoch % args.triplet_freq == 0:
             if args.mining == 'KMeans':
                 print('Generating cluster classification on training data ...')
-                train_results = ComputeClusters(train_loader, model, len(val_classes))
+                train_results = ComputeClusters(train_loader, model, len(train_classes))
                 labels_true = train_results['true']
                 labels_pred = train_results['predicted']
                 sampler.SampleNegatives(labels_true, labels_pred)
