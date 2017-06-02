@@ -79,27 +79,78 @@ class ShallowNet(nn.Module):
         return d
 
 class InceptionBased(nn.Module):
-    def __init__(self, feature_size=64, im_size=299, normalize=False):
+    def __init__(self, feature_size=2048, im_size=299, normalize=False):
         super(InceptionBased, self).__init__()
         self.normalize = normalize
         self.im_size = 299
         self.feature_size=feature_size
         self.inception = torchvision.models.inception_v3(pretrained=True)
-        self.inception.fc = nn.Linear(2048, feature_size)
+        #self.inception.fc = nn.Linear(2048, feature_size)
 
     def forward(self, x):
-        y = self.inception(x)
-        # weird result in training mode, probably a bug in inception module?
-        if self.training:
-            if self.normalize:
-                return y[0]/torch.norm(y[0],2,1).repeat(1, self.feature_size)
-            else:
-                return y[0]
-        else:
-            if self.normalize:
-                return y/torch.norm(y,2,1).repeat(1, self.feature_size)
-            else:
-                return y
+        #y = self.inception(x)
+        ## weird result in training mode, probably a bug in inception module?
+        #if self.training:
+        #    if self.normalize:
+        #        return y[0]/torch.norm(y[0],2,1).repeat(1, self.feature_size)
+        #    else:
+        #        return y[0]
+        #else:
+        #    if self.normalize:
+        #        return y/torch.norm(y,2,1).repeat(1, self.feature_size)
+        #    else:
+        #        return y
+        if self.inception.transform_input:
+            x = x.clone()
+            x[:, 0] = x[:, 0] * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
+            x[:, 1] = x[:, 1] * (0.224 / 0.5) + (0.456 - 0.5) / 0.5
+            x[:, 2] = x[:, 2] * (0.225 / 0.5) + (0.406 - 0.5) / 0.5
+        # 299 x 299 x 3
+        x = self.inception.Conv2d_1a_3x3(x)
+        # 149 x 149 x 32
+        x = self.inception.Conv2d_2a_3x3(x)
+        # 147 x 147 x 32
+        x = self.inception.Conv2d_2b_3x3(x)
+        # 147 x 147 x 64
+        x = F.max_pool2d(x, kernel_size=3, stride=2)
+        # 73 x 73 x 64
+        x = self.inception.Conv2d_3b_1x1(x)
+        # 73 x 73 x 80
+        x = self.inception.Conv2d_4a_3x3(x)
+        # 71 x 71 x 192
+        x = F.max_pool2d(x, kernel_size=3, stride=2)
+        # 35 x 35 x 192
+        x = self.inception.Mixed_5b(x)
+        # 35 x 35 x 256
+        x = self.inception.Mixed_5c(x)
+        # 35 x 35 x 288
+        x = self.inception.Mixed_5d(x)
+        # 35 x 35 x 288
+        x = self.inception.Mixed_6a(x)
+        # 17 x 17 x 768
+        x = self.inception.Mixed_6b(x)
+        # 17 x 17 x 768
+        x = self.inception.Mixed_6c(x)
+        # 17 x 17 x 768
+        x = self.inception.Mixed_6d(x)
+        # 17 x 17 x 768
+        x = self.inception.Mixed_6e(x)
+        # 17 x 17 x 768
+        if self.inception.training and self.inception.aux_logits:
+            aux = self.inception.AuxLogits(x)
+        # 17 x 17 x 768
+        x = self.inception.Mixed_7a(x)
+        # 8 x 8 x 1280
+        x = self.inception.Mixed_7b(x)
+        # 8 x 8 x 2048
+        x = self.inception.Mixed_7c(x)
+        # 8 x 8 x 2048
+        x = F.avg_pool2d(x, kernel_size=8)
+	x = x.view(-1, self.feature_size)
+	if self.normalize:
+        	return x/torch.norm(x,2,1).repeat(1, self.feature_size)
+	else:
+		return x
 
     def SetLearningRate(self, lr1, lr2):
         d = [

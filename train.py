@@ -193,6 +193,8 @@ def main():
         Net = model_net.InceptionBased
         # force image size to be 299
         im_size = 299
+	# force feature size to be 2048
+	feature_size = 2048
     elif args.network == 'Squeeze':
         print('Using squeezenet')
         Net = model_net.SqueezeNetBased

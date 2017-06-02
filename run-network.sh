@@ -1,8 +1,8 @@
 export LOSS=HingeL2
-./shallownet-command.sh
+./inception-command.sh
 
 export LOSS=SquareHingeL2
-./shallownet-command.sh
+./inception-command.sh
 
 export LOSS=Ratio
-./shallownet-command.sh
+./inception-command.sh
