@@ -515,8 +515,15 @@ def ComputeClusters(test_loader, enet, num_clusters):
     #print(labels_predicted)
 
     acc = metrics.accuracy_score(labels_true, labels_predicted)
-    nmi = metrics.cluster.normalized_mutual_info_score(
-            labels_true, labels_predicted)
+    nmi_s = metrics.cluster.normalized_mutual_info_score(
+              labels_true, labels_predicted)
+    mi = metrics.cluster.mutual_info_score(
+            labels_true, labels_predicted
+            )
+    h1 = metrics.cluster.entropy(labels_true)
+    h2 = metrics.cluster.entropy(labels_predicted)
+    nmi = 2*mi/(h1+h2)
+    print(mi, h1, h2)
     precision = metrics.precision_score(labels_true, labels_predicted,
                                        average='micro')
     recall = metrics.recall_score(labels_true, labels_predicted,
@@ -524,7 +531,7 @@ def ComputeClusters(test_loader, enet, num_clusters):
     f1_score = 2*precision*recall/(precision+recall)
 
     print('Accuracy : %f' % acc)
-    print('NMI : %f' % nmi)
+    print('NMI : %f vs old %f' % (nmi, nmi_s))
     print('Precision : %f' % precision)
     print('Recall : %f' % recall)
     print('F1 score : %f' % f1_score)
