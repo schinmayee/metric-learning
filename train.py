@@ -117,7 +117,7 @@ val_classes=None
 test_classes=None
 triplets_per_class=0  # keep at least 16 triplets per class, later increase to 32/64
 
-hard_frac = 0.5
+hard_frac = 0.6
 
 # globals
 best_acc = 0
@@ -193,8 +193,8 @@ def main():
         Net = model_net.InceptionBased
         # force image size to be 299
         im_size = 299
-	# force feature size to be 2048
-	feature_size = 2048
+	## force feature size to be 2048
+	#feature_size = 2048
     elif args.network == 'Squeeze':
         print('Using squeezenet')
         Net = model_net.SqueezeNetBased
@@ -282,7 +282,7 @@ def main():
                               ]),
                               classes=val_classes, im_size=im_size)
     val_loader_t = torch.utils.data.DataLoader(
-        val_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
+        val_data_set_t, batch_size=16, shuffle=True, **kwargs)
     val_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
@@ -433,6 +433,9 @@ def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
             sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
         loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
+        if batch_idx % args.log_interval == 0:
+            print(loss_triplet.data[0], args.reg*loss_embedd.data[0], args.reg,
+                    loss_embedd.data[0])
         loss = loss_triplet + args.reg * loss_embedd
 
         # measure loss accuracy and record loss

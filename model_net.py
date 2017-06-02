@@ -85,7 +85,7 @@ class InceptionBased(nn.Module):
         self.im_size = 299
         self.feature_size=feature_size
         self.inception = torchvision.models.inception_v3(pretrained=True)
-        #self.inception.fc = nn.Linear(2048, feature_size)
+        self.inception.fc = nn.Linear(2048, feature_size)
 
     def forward(self, x):
         #y = self.inception(x)
@@ -146,7 +146,14 @@ class InceptionBased(nn.Module):
         x = self.inception.Mixed_7c(x)
         # 8 x 8 x 2048
         x = F.avg_pool2d(x, kernel_size=8)
-	x = x.view(-1, self.feature_size)
+	# x = x.view(-1, self.feature_size)
+
+	# 1 x 1 x 2048
+        x = F.dropout(x, training=self.training)
+        # 1 x 1 x 2048
+        x = x.view(x.size(0), -1)
+        # 2048
+        x = self.inception.fc(x)
 	if self.normalize:
         	return x/torch.norm(x,2,1).repeat(1, self.feature_size)
 	else:
@@ -159,18 +166,18 @@ class InceptionBased(nn.Module):
                 { 'params' : self.inception.Conv2d_2b_3x3.parameters(), 'lr': lr1 },
                 { 'params' : self.inception.Conv2d_3b_1x1.parameters(), 'lr': lr1 },
                 { 'params' : self.inception.Conv2d_4a_3x3.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_5b.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_5c.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_5d.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_6a.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_6b.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_6c.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_6d.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_6e.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.AuxLogits.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_7a.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_7b.parameters(), 'lr': lr1 },
-                { 'params' : self.inception.Mixed_7c.parameters(), 'lr': lr1 },
+                { 'params' : self.inception.Mixed_5b.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_5c.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_5d.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_6a.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_6b.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_6c.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_6d.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_6e.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.AuxLogits.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_7a.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_7b.parameters(), 'lr': 2*lr1 },
+                { 'params' : self.inception.Mixed_7c.parameters(), 'lr': 2*lr1 },
                 { 'params' : self.inception.fc.parameters(), 'lr': lr2 },
             ]
         return d
