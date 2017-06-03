@@ -136,6 +136,8 @@ classification_accs = list()
 
 sampler = None
 
+triplet_batch_size = 16  # larger batch sizes throw gpu errors
+
 # main
 def main():
     global args, feature_size, im_size
@@ -234,11 +236,11 @@ def main():
     if args.mining == 'Hardest':
         sampler = hard_mining.NHardestTripletSampler(
                 len(train_classes),
-                int((hard_frac+hard_frac/2)*args.batch_size))
+                int((hard_frac+hard_frac/2)*triplet_batch_size))
     elif args.mining == 'SemiHard':
         sampler = hard_mining.SemiHardTripletSampler(
                 len(train_classes),
-                int((hard_frac+hard_frac/2)*args.batch_size))
+                int((hard_frac+hard_frac/2)*triplet_batch_size))
     elif args.mining == 'KMeans':
         sampler = hard_mining.ClassificationBasedSampler(
                 len(train_classes),
@@ -264,7 +266,7 @@ def main():
                              ]),
                              classes=train_classes, im_size=im_size)
     train_loader_t = torch.utils.data.DataLoader(
-        train_data_set_t, batch_size=args.batch_size, shuffle=True, **kwargs)
+        train_data_set_t, batch_size=triplet_batch_size, shuffle=True, **kwargs)
     train_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
@@ -282,7 +284,7 @@ def main():
                               ]),
                               classes=val_classes, im_size=im_size)
     val_loader_t = torch.utils.data.DataLoader(
-        val_data_set_t, batch_size=16, shuffle=True, **kwargs)
+        val_data_set_t, batch_size=triplet_batch_size, shuffle=True, **kwargs)
     val_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
@@ -413,7 +415,18 @@ def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
     
     # switch to train mode
     tnet.train()
+
+    loss_triplet = 0
+    loss_embedd = 0
+    assert(args.batch_size%triplet_batch_size == 0)
+    reset = args.batch_size/triplet_batch_size
+
     for batch_idx, (data1, data2, data3, idx1, idx2, idx3) in enumerate(train_loader_t):
+	if batch_idx % reset == 0:
+	    #print('Reset')
+	    loss_triplet = 0
+	    loss_embedd = 0
+
         if args.cuda:
             data1, data2, data3 = data1.cuda(), data2.cuda(), data3.cuda()
         data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
@@ -427,16 +440,18 @@ def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
         target = Variable(target)
         
         # forward pass
-        loss_triplet = criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard)
+        loss_triplet += criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard)
 
         if args.mining == 'Hardest' or args.mining == 'SemiHard':
             sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
         
-        loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
-        if batch_idx % args.log_interval == 0:
-            print(loss_triplet.data[0], args.reg*loss_embedd.data[0], args.reg,
-                    loss_embedd.data[0])
-        loss = loss_triplet + args.reg * loss_embedd
+        loss_embedd += embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
+	
+	if batch_idx%reset != reset-1:
+	    # don't do backward pass as of yet
+	    continue
+
+        loss = (loss_triplet + args.reg * loss_embedd)/reset
 
         # measure loss accuracy and record loss
         loss_acc = LossAccuracy(dista, distb, distc, args.margin)
@@ -449,15 +464,17 @@ def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
         loss.backward()
         optimizer.step()
 
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{}]\t'
-                  'Loss: {:.4f} ({:.4f}) \t'
-                  'Loss Acc: {:.2f}% ({:.2f}%) \t'
-                  'Emb_Norm: {:.2f} ({:.2f})'.format(
-                epoch, batch_idx * len(data1), len(train_loader_t.dataset),
-                losses.val, losses.avg, 
-                100. * loss_accs.val, 100. * loss_accs.avg,
-                emb_norms.val, emb_norms.avg))
+        print(loss_triplet.data[0], args.reg*loss_embedd.data[0], args.reg,
+                loss_embedd.data[0])
+
+        print('Train Epoch: {} [{}/{}]\t'
+              'Loss: {:.4f} ({:.4f}) \t'
+              'Loss Acc: {:.2f}% ({:.2f}%) \t'
+              'Emb_Norm: {:.2f} ({:.2f})'.format(
+            epoch, (batch_idx+1) * len(data1), len(train_loader_t.dataset),
+            losses.val, losses.avg, 
+            100. * loss_accs.val, 100. * loss_accs.avg,
+            emb_norms.val, emb_norms.avg))
 
     return loss_accs.avg
 
