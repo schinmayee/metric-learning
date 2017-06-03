@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+import init
 
 class SimpleNet(nn.Module):
     def __init__(self, feature_size=64, im_size=128, normalize=False):
@@ -22,6 +23,10 @@ class SimpleNet(nn.Module):
         self.fc1 = nn.Linear(self.fc1_len, 512)
         self.bn3 = nn.BatchNorm1d(512)
         self.fc2 = nn.Linear(512, feature_size)
+	init.xavier_normal(self.conv1.weight)
+	init.xavier_normal(self.conv2.weight)
+	init.xavier_normal(self.fc1.weight)
+	init.xavier_normal(self.fc2.weight)
 
     def forward(self, x):
         x = self.bn0(x)
@@ -60,6 +65,10 @@ class ShallowNet(nn.Module):
         self.fc1 = nn.Linear(self.fc1_len, 512)
         self.bn3 = nn.BatchNorm1d(512)
         self.fc2 = nn.Linear(512, feature_size)
+	init.xavier_normal(self.conv1.weight)
+	init.xavier_normal(self.conv2.weight)
+	init.xavier_normal(self.fc1.weight)
+	init.xavier_normal(self.fc2.weight)
 
     def forward(self, x):
         x = self.bn0(x)
@@ -86,6 +95,7 @@ class InceptionBased(nn.Module):
         self.feature_size=feature_size
         self.inception = torchvision.models.inception_v3(pretrained=True)
         self.inception.fc = nn.Linear(2048, feature_size)
+	init.xavier_normal(self.incpetion.fc.weight)
 
     def forward(self, x):
         #y = self.inception(x)
@@ -197,6 +207,7 @@ class SqueezeNetBased(nn.Module):
             nn.AvgPool2d(13)
         )
         self.classifier = classifier
+	init.xavier_normal(final_conv.weight)
 
     def forward(self, x):
         x = self.features(x)
@@ -223,6 +234,7 @@ class ResNetBased(nn.Module):
         self.resnet = torchvision.models.resnet50(pretrained=True)
         fc = nn.Linear(2048, feature_size)
         self.resnet.fc = fc
+	init.xavier_normal(self.resnet.fc.weight)
 
     def forward(self, x):
         x = self.resnet(x)
