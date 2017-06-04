@@ -56,8 +56,8 @@ parser.add_argument('--seed', type=int, default=1,
                     help='random seed (default: 1)')
 parser.add_argument('--margin', type=float, default=0.2,
                     help='margin for triplet loss (default: 0.2)')
-parser.add_argument('--reg', type=float, default=1e-4,
-                    help='regularization for embedding (default: 5e-3)')
+parser.add_argument('--reg', type=float, default=1e-3,
+                    help='regularization for embedding (default: 1e-3)')
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 
@@ -381,6 +381,7 @@ def Train(train_loader_t, model, optimizer, epoch,
             loss_triplet.data[0], loss.data[0]))
 
 def ComputeTripletLoss(features, labels, num_species, num_per_specie):
+    features = features.cpu()
     anchor = list()
     positive = list()
     negative = list()

@@ -97,7 +97,7 @@ class InceptionBased(nn.Module):
         self.feature_size=feature_size
         self.inception = torchvision.models.inception_v3(pretrained=True)
         self.inception.fc = nn.Linear(2048, feature_size)
-	init.xavier_normal(self.incpetion.fc.weight)
+	init.xavier_normal(self.inception.fc.weight)
 
     def forward(self, x):
         #y = self.inception(x)
