@@ -228,7 +228,7 @@ def main():
                            ]),
                            classes=val_classes, im_size=im_size)
     val_loader = torch.utils.data.DataLoader(
-            val_data_set, batch_size=args.batch_size, shuffle=False, 
+            val_data_set, batch_size=args.batch_size/2, shuffle=False, 
             sampler=torch.utils.data.sampler.SequentialSampler(val_data_set),
             **kwargs)
 
@@ -238,7 +238,7 @@ def main():
                            ]),
                            classes=test_classes, im_size=im_size)
     test_loader = torch.utils.data.DataLoader(
-            test_data_set, batch_size=args.batch_size, shuffle=False, 
+            test_data_set, batch_size=args.batch_size/2, shuffle=False, 
             sampler=torch.utils.data.sampler.SequentialSampler(test_data_set),
             **kwargs)
 
