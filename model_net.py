@@ -42,6 +42,7 @@ class SimpleNet(nn.Module):
             return x
 
     def SetLearningRate(self, lr1, lr2):
+	print('Setting learning rate for simple net')
         d = [{ 'params' : self.parameters(), 'lr': lr2 }]
         return d
 
@@ -84,6 +85,7 @@ class ShallowNet(nn.Module):
             return x
 
     def SetLearningRate(self, lr1, lr2):
+	print('Setting learning rate for shallow net')
         d = [{ 'params' : self.parameters(), 'lr': lr2 }]
         return d
 
@@ -170,6 +172,7 @@ class InceptionBased(nn.Module):
 		return x
 
     def SetLearningRate(self, lr1, lr2):
+	print('Setting learning rate for inception net')
         d = [
                 { 'params' : self.inception.Conv2d_1a_3x3.parameters(), 'lr': lr1 },
                 { 'params' : self.inception.Conv2d_2a_3x3.parameters(), 'lr': lr1 },
@@ -219,6 +222,7 @@ class SqueezeNetBased(nn.Module):
             return x
 
     def SetLearningRate(self, lr1, lr2):
+	print('Setting learning rate for squeeze net')
         d = [
                 { 'params' : self.features.parameters(), 'lr': lr1 },
                 { 'params' : self.classifier.parameters(), 'lr': lr2 },
@@ -244,6 +248,7 @@ class ResNetBased(nn.Module):
             return x
 
     def SetLearningRate(self, lr1, lr2):
+	print('Setting learning rate for resnet')
         d = [
                 { 'params' : self.resnet.conv1.parameters(), 'lr': lr1 },
                 { 'params' : self.resnet.bn1.parameters(), 'lr': lr1 },

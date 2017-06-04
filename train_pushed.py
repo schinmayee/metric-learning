@@ -29,15 +29,10 @@ import utils
 import model_net
 
 # triplet and loss
-import triplet_net
 import losses
 
-# sampling
-import hard_mining
-
-# data loader
-from triplet_cub_loader import CUBTriplets
 from cub_loader import CUBImages
+from class_sampler import ClassSampler
 
 # sklearn for clustering and evaluating clusters
 from sklearn.cluster import KMeans
@@ -61,8 +56,8 @@ parser.add_argument('--seed', type=int, default=1,
                     help='random seed (default: 1)')
 parser.add_argument('--margin', type=float, default=0.2,
                     help='margin for triplet loss (default: 0.2)')
-parser.add_argument('--reg', type=float, default=1e-3,
-                    help='regularization for embedding (default: 1e-3)')
+parser.add_argument('--reg', type=float, default=1e-4,
+                    help='regularization for embedding (default: 5e-3)')
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 
@@ -71,8 +66,6 @@ parser.add_argument('--loss', type=str, default='HingeL2',
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
-parser.add_argument('--triplet-freq', type=int, default=10,
-                    help='epochs before new triplets list (default: 10)')
 parser.add_argument('--val-freq', type=int, default=2,
         help='epochs before validating on validation set (default: 2)')
 parser.add_argument('--results-freq', type=int, default=2,
@@ -87,21 +80,19 @@ parser.add_argument('--log-interval', type=int, default=2,
 parser.add_argument('--feature-size', type=int, default=64,
         help='size for embeddings/features to learn')
 
-parser.add_argument('--num-train', type=int, default=4,
+parser.add_argument('--num-train', type=int, default=8,
         help='Number of train classes')
 parser.add_argument('--num-val', type=int, default=4,
         help='Number of validation classes')
-parser.add_argument('--num-test', type=int, default=2,
+parser.add_argument('--num-test', type=int, default=5,
         help='Number of test classes')
-parser.add_argument('--triplets-per-class', type=int, default=16,
-        help='Number of triplets per class')
+parser.add_argument('--num-species', type=int, default=4,
+        help='Number of specie in each batch')
+parser.add_argument('--num-batches', type=int, default=100,
+	help='Number of batches per epoch (...)')
 
 parser.add_argument('--normalize-features', action='store_true', default=False,
                     help='normalize features')
-parser.add_argument('--in-triplet-hard', action='store_true', default=False,
-                    help='enables in triplet hard mining')
-parser.add_argument('--mining', type=str, default='Hardest',
-        help='Method to use for mining hard examples')
 
 # parameters
 feature_size = 0
@@ -133,10 +124,6 @@ train_losses = list()
 val_losses = list()
 triplet_accs = list()
 classification_accs = list()
-
-sampler = None
-
-triplet_batch_size = 16  # larger batch sizes throw gpu errors
 
 # main
 def main():
@@ -170,8 +157,6 @@ def main():
         train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
         val_classes=range(num_train,num_train+num_val)
         test_classes=range(num_train+num_val,num_train+num_val+num_test)
-        triplets_per_class=args.triplets_per_class
-    assert(triplets_per_class*len(train_classes)%args.batch_size == 0)
 
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -216,58 +201,17 @@ def main():
         assert(False)
     model = Net(feature_size=feature_size, im_size=im_size, normalize=args.normalize_features)
 
-    # triplet network
-    tnet = triplet_net.TripletNet(model)
-
     if args.cuda:
-        tnet.cuda()
-	model.cuda()
-
-    # loss to use
-    if args.loss == 'HingeL2':
-        criterion = losses.SimpleHingeLoss
-    elif args.loss == 'SquareHingeL2':
-        criterion = losses.SimpleSquareHingeLoss
-    elif args.loss == 'Ratio':
-        criterion = losses.RatioLoss
-    else:
-        assert(False)
-
-    # sampler to use
-    if args.mining == 'Hardest':
-        sampler = hard_mining.NHardestTripletSampler(
-                len(train_classes),
-                int((hard_frac+hard_frac/2)*triplet_batch_size))
-    elif args.mining == 'SemiHard':
-        sampler = hard_mining.SemiHardTripletSampler(
-                len(train_classes),
-                int((hard_frac+hard_frac/2)*triplet_batch_size))
-    elif args.mining == 'KMeans':
-        sampler = hard_mining.ClassificationBasedSampler(
-                len(train_classes),
-                int((hard_frac+hard_frac/2)*len(train_classes)*triplets_per_class)
-                )
-    else:
-        assert(False)
-    
+        model.cuda()
 
     # data
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args.data == 'cub-2011':
-        TLoader = CUBTriplets
         DLoader = CUBImages
         data_path = os.path.join(dir_path, 'datasets/cub-2011')
     else:
         assert(False)
 
-    train_data_set_t = TLoader(data_path,
-                             n_triplets=triplets_per_class*len(train_classes),
-                             transform=transforms.Compose([
-                               transforms.ToTensor(),
-                             ]),
-                             classes=train_classes, im_size=im_size)
-    train_loader_t = torch.utils.data.DataLoader(
-        train_data_set_t, batch_size=triplet_batch_size, shuffle=True, **kwargs)
     train_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
@@ -278,14 +222,6 @@ def main():
             sampler=torch.utils.data.sampler.SequentialSampler(train_data_set),
             **kwargs)
 
-    val_data_set_t = TLoader(data_path,
-                              n_triplets=triplets_per_class*len(val_classes),
-                              transform=transforms.Compose([
-                                transforms.ToTensor(),
-                              ]),
-                              classes=val_classes, im_size=im_size)
-    val_loader_t = torch.utils.data.DataLoader(
-        val_data_set_t, batch_size=triplet_batch_size, shuffle=True, **kwargs)
     val_data_set = DLoader(data_path,
                            transform=transforms.Compose([
                              transforms.ToTensor(),
@@ -313,7 +249,7 @@ def main():
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
             best_prec1 = checkpoint['best_prec1']
-            tnet.load_state_dict(checkpoint['state_dict'])
+            model.load_state_dict(checkpoint['state_dict'])
             print("=> loaded checkpoint '{}' (epoch {})"
                     .format(args.resume, checkpoint['epoch']))
         else:
@@ -321,23 +257,50 @@ def main():
 
     cudnn.benchmark = True
 
-    net_params = tnet.SetLearningRate(args.lr*0.1, args.lr)
+    net_params = model.SetLearningRate(args.lr*0.1, args.lr)
     optimizer = optim.Adam(net_params, lr=args.lr,
                            betas=[args.beta1,args.beta2])
 
-    n_parameters = sum([p.data.nelement() for p in tnet.parameters()])
+    n_parameters = sum([p.data.nelement() for p in model.parameters()])
     print('  + Number of params: {}'.format(n_parameters))
 
     labels_true = None
     labels_predicted = None
+    assert(args.batch_size % args.num_species == 0)
+    num_species = args.num_species
+    num_per_specie = args.batch_size/args.num_species
 
     for epoch in range(1, args.epochs + 1):
+
+	train_data_set_t = DLoader(data_path,
+    	                         transform=transforms.Compose([
+    	                           transforms.ToTensor(),
+    	                         ]),
+    	                         classes=train_classes, im_size=im_size)
+    	train_loader_t = torch.utils.data.DataLoader(
+	    train_data_set_t, batch_size=args.batch_size,
+	    sampler=ClassSampler(
+		train_data_set_t, num_species,
+		num_per_specie, args.num_batches), **kwargs)
+
+	val_data_set_t = DLoader(data_path,
+    	                          transform=transforms.Compose([
+    	                            transforms.ToTensor(),
+    	                          ]),
+    	                          classes=val_classes, im_size=im_size)
+    	val_loader_t = torch.utils.data.DataLoader(
+	    val_data_set_t, batch_size=args.batch_size,
+	    sampler=ClassSampler(
+		val_data_set_t, num_species,
+		num_per_specie, args.num_batches), **kwargs)
+
         # train for one epoch
-        train_loss = Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler)
+        train_loss = Train(train_loader_t, model, optimizer, epoch,
+		           num_species, num_per_specie)
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
-            val_loss, triplet_acc = TestTriplets(val_loader_t, tnet, criterion)
+            val_loss, triplet_acc = TestTriplets(val_loader_t, model)
             val_results = ComputeClusters(val_loader, model, len(val_classes))
             acc = val_results['accuracy']
             precision = val_results['precision']
@@ -372,19 +335,6 @@ def main():
             val_losses.append(val_loss)
             triplet_accs.append(triplet_acc)
             classification_accs.append(acc)
-            
-
-        # reset sampler and regenerate triplets every few epochs
-        if epoch % args.triplet_freq == 0:
-            if args.mining == 'KMeans':
-                print('Generating cluster classification on training data ...')
-                train_results = ComputeClusters(train_loader, model, len(train_classes))
-                labels_true = train_results['true']
-                labels_pred = train_results['predicted']
-                sampler.SampleNegatives(labels_true, labels_pred)
-            train_data_set_t.regenerate_triplet_list(sampler, hard_frac)
-            # then reset sampler
-            sampler.Reset()
 
         # save final results and plot loss/accuracy with training
         if epoch % args.results_freq == 0:
@@ -409,75 +359,85 @@ def main():
             SaveClusterResults(runs_dir, 'test', test_results, test_data_set)
             
 
-def Train(train_loader_t, tnet, criterion, optimizer, epoch, sampler):
+def Train(train_loader_t, model, optimizer, epoch,
+	  num_species, num_per_specie):
     losses = AverageMeter()
-    loss_accs = AverageMeter()
     emb_norms = AverageMeter()
     
     # switch to train mode
-    tnet.train()
+    model.train()
 
     loss_triplet = 0
     loss_embedd = 0
-    assert(args.batch_size%triplet_batch_size == 0)
-    reset = args.batch_size/triplet_batch_size
 
-    for batch_idx, (data1, data2, data3, idx1, idx2, idx3) in enumerate(train_loader_t):
-	if batch_idx % reset == 0:
-	    #print('Reset')
-	    loss_triplet = 0
-	    loss_embedd = 0
-
+    for batch_idx, (data, labels, idx) in enumerate(train_loader_t):
         if args.cuda:
-            data1, data2, data3 = data1.cuda(), data2.cuda(), data3.cuda()
-        data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
+            data = data.cuda()
+	data = Variable(data)
 
         # compute output
-        dista, distb, distc, embedded_x, embedded_y, embedded_z = tnet(data1, data2, data3)
-        # 1 means, dista should be larger than distb
-        target = torch.FloatTensor(dista.size()).fill_(1)
-        if args.cuda:
-            target = target.cuda()
-        target = Variable(target)
-        
-        # forward pass
-        loss_triplet += criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard)
+        embed = model(data)
+	loss_embed = embed.norm(2)
+	loss_triplet = ComputeTripletLoss(embed, labels,
+		                          num_species, num_per_specie)
 
-        if args.mining == 'Hardest' or args.mining == 'SemiHard':
-            sampler.SampleNegatives(dista, distb, loss_triplet, (idx1, idx2, idx3))
-        
-        loss_embedd += embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
-	
-	if batch_idx%reset != reset-1:
-	    # don't do backward pass as of yet
-	    continue
-
-        loss = (loss_triplet + args.reg * loss_embedd)/reset
+        loss = loss_triplet + args.reg * loss_embed
 
         # measure loss accuracy and record loss
-        loss_acc = LossAccuracy(dista, distb, distc, args.margin)
-        losses.update(loss_triplet.data[0], data1.size(0))
-        loss_accs.update(loss_acc, data1.size(0))
-        emb_norms.update(loss_embedd.data[0]/3, data1.size(0))
+        losses.update(loss_triplet.data[0], data.size(0))
+        emb_norms.update(loss_embed.data[0]/3, data.size(0))
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        print(loss_triplet.data[0], args.reg*loss_embedd.data[0], args.reg,
-                loss_embedd.data[0])
+        print(loss_triplet.data[0], loss.data[0])
 
         print('Train Epoch: {} [{}/{}]\t'
-              'Loss: {:.4f} ({:.4f}) \t'
-              'Loss Acc: {:.2f}% ({:.2f}%) \t'
-              'Emb_Norm: {:.2f} ({:.2f})'.format(
-            epoch, (batch_idx+1) * len(data1), len(train_loader_t.dataset),
-            losses.val, losses.avg, 
-            100. * loss_accs.val, 100. * loss_accs.avg,
-            emb_norms.val, emb_norms.avg))
+	      'Loss: {:.4f} \t'
+              'Total Loss: {:.2f}'.format(
+            epoch, (batch_idx+1) * len(data), len(train_loader_t.sampler),
+            loss_triplet.data[0], loss.data[0]))
 
-    return loss_accs.avg
+def ComputeTripletLoss(features, labels, num_species, num_per_specie):
+    anchor = list()
+    positive = list()
+    negative = list()
+    start_idx = 0
+    #print('Computing triplets ...')
+    #total_loss = 0
+    for i in range(num_species):
+	for j in range(num_per_specie):
+	    aidx = start_idx + j
+	    diff = features - features[aidx,:].expand_as(features)
+	    diff_norms = diff.norm(2, 1).squeeze()
+	    for pair in range(j, num_per_specie):
+		pidx = start_idx + pair
+		ap_dist = (features[aidx]-features[pidx]).norm(2).data[0]
+		ap_dist = torch.Tensor(feature_size).fill_(ap_dist)
+		norms_loss = diff_norms.data - ap_dist  # negative - positive-dist
+		norms_loss[start_idx:start_idx+num_per_specie] = 2*args.margin
+		in_margin = norms_loss.lt(args.margin)
+		all_neg = in_margin.nonzero()
+		if (len(all_neg.size()) == 0):
+		    continue
+		this_loss = torch.sum(-norms_loss[in_margin] + args.margin)
+		#print('This loss %f' % this_loss)
+		for k in range(all_neg.size()[0]):
+		    anchor.append(features[aidx].view(1,-1))
+		    positive.append(features[pidx].view(1,-1))
+		    negative.append(features[all_neg[k]].view(1,-1))
+		#total_loss += this_loss
+	start_idx += num_per_specie
+    #print('Number of triplets = %d' % len(anchor))
+    #print('Total loss should be %f' % (total_loss/len(anchor)))
+    av = torch.cat(anchor, dim=0).view(len(anchor), feature_size)
+    pv = torch.cat(positive, dim=0).view(len(positive), feature_size)
+    nv = torch.cat(negative, dim=0).view(len(negative), feature_size)
+    triplet_loss = torch.nn.functional.triplet_margin_loss(
+	    av, pv, nv, margin=args.margin)
+    return triplet_loss
 
 def ComputeClusters(test_loader, enet, num_clusters):
     global feature_size
