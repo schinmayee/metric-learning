@@ -238,7 +238,7 @@ def main():
                            ]),
                            classes=test_classes, im_size=im_size)
     test_loader = torch.utils.data.DataLoader(
-            test_data_set, batch_size=args.batch_size/2, shuffle=False, 
+            test_data_set, batch_size=args.batch_size/3, shuffle=False, 
             sampler=torch.utils.data.sampler.SequentialSampler(test_data_set),
             **kwargs)
 
@@ -330,7 +330,8 @@ def main():
             pickle.dump(classification_accs, open(os.path.join(runs_dir, 'classification_accs'), 'w'))
 
             # at the end, save some query results for visualization
-            val_results = ComputeClusters(val_loader, best_model, len(val_classes))
+            if epoch%args.val_freq != 0:
+                val_results = ComputeClusters(val_loader, best_model, len(val_classes))
             SaveClusterResults(runs_dir, 'val', val_results, val_data_set)
 
         if epoch % args.test_results_freq == 0:
