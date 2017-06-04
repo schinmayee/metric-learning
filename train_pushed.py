@@ -140,8 +140,8 @@ def main():
     
     runs_dir = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
-            ('runs/r-%s-%s-f%d-%s' %
-                (args.network, args.loss, args.feature_size, time.strftime('%m-%d-%H-%M'))))
+            ('runs/rp-%s-f%d-%s' %
+                (args.network, args.feature_size, time.strftime('%m-%d-%H-%M'))))
     if not os.path.exists(runs_dir):
         os.makedirs(runs_dir)
     command = ' '.join(sys.argv)
@@ -154,7 +154,7 @@ def main():
         num_train=args.num_train
         num_val=args.num_val
         num_test=args.num_test
-        train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
+        train_classes=range(num_train+num_val)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
         val_classes=range(num_train,num_train+num_val)
         test_classes=range(num_train+num_val,num_train+num_val+num_test)
 
@@ -283,24 +283,12 @@ def main():
 		train_data_set_t, num_species,
 		num_per_specie, args.num_batches), **kwargs)
 
-	val_data_set_t = DLoader(data_path,
-    	                          transform=transforms.Compose([
-    	                            transforms.ToTensor(),
-    	                          ]),
-    	                          classes=val_classes, im_size=im_size)
-    	val_loader_t = torch.utils.data.DataLoader(
-	    val_data_set_t, batch_size=args.batch_size,
-	    sampler=ClassSampler(
-		val_data_set_t, num_species,
-		num_per_specie, args.num_batches), **kwargs)
-
         # train for one epoch
         train_loss = Train(train_loader_t, model, optimizer, epoch,
 		           num_species, num_per_specie)
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
-            val_loss, triplet_acc = TestTriplets(val_loader_t, model)
             val_results = ComputeClusters(val_loader, model, len(val_classes))
             acc = val_results['accuracy']
             precision = val_results['precision']
@@ -323,7 +311,7 @@ def main():
                 best_acc, best_precision, best_recall, best_f1))
             SaveCheckpoint({
                 'epoch': epoch + 1,
-                'state_dict': tnet.state_dict(),
+                'state_dict': model.state_dict(),
                 'best_prec1': best_acc,
             }, is_best)
 
@@ -332,19 +320,13 @@ def main():
             #   2. triplet and cluster based classification accuracy on validation set
             epochs.append(epoch)
             train_losses.append(train_loss)
-            val_losses.append(val_loss)
-            triplet_accs.append(triplet_acc)
             classification_accs.append(acc)
 
         # save final results and plot loss/accuracy with training
         if epoch % args.results_freq == 0:
             print('Results are being saved to %s' % runs_dir)
-            utils.SavePlots(runs_dir, epochs, train_losses, val_losses,
-                            triplet_accs, classification_accs)
             pickle.dump(epochs, open(os.path.join(runs_dir, 'epochs'), 'w'))
             pickle.dump(train_losses, open(os.path.join(runs_dir, 'train_losses'), 'w'))
-            pickle.dump(val_losses, open(os.path.join(runs_dir, 'val_losses'), 'w'))
-            pickle.dump(triplet_accs, open(os.path.join(runs_dir, 'triplet_accs'), 'w'))
             pickle.dump(classification_accs, open(os.path.join(runs_dir, 'classification_accs'), 'w'))
 
             # at the end, save some query results for visualization
@@ -392,8 +374,6 @@ def Train(train_loader_t, model, optimizer, epoch,
         loss.backward()
         optimizer.step()
 
-        print(loss_triplet.data[0], loss.data[0])
-
         print('Train Epoch: {} [{}/{}]\t'
 	      'Loss: {:.4f} \t'
               'Total Loss: {:.2f}'.format(
@@ -435,6 +415,10 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
     av = torch.cat(anchor, dim=0).view(len(anchor), feature_size)
     pv = torch.cat(positive, dim=0).view(len(positive), feature_size)
     nv = torch.cat(negative, dim=0).view(len(negative), feature_size)
+    if args.cuda:
+	av = av.cuda()
+	pv = pv.cuda()
+	nv = nv.cuda()
     triplet_loss = torch.nn.functional.triplet_margin_loss(
 	    av, pv, nv, margin=args.margin)
     return triplet_loss
@@ -572,38 +556,6 @@ def SaveClusterResults(base_dir, prefix, results, data_set):
                 r.write(', ')
             r.write('\n')
     
-
-def TestTriplets(test_loader, tnet, criterion):
-    losses = AverageMeter()
-    accs = AverageMeter()
-
-    # switch to evaluation mode
-    tnet.eval()
-    for batch_idx, (data1, data2, data3, _, _, _) in enumerate(test_loader):
-        if args.cuda:
-            data1, data2, data3 = data1.cuda(), data2.cuda(), data3.cuda()
-        data1, data2, data3 = Variable(data1), Variable(data2), Variable(data3)
-
-        # compute output
-        dista, distb, distc, embedded_x, embedded_y, embedded_z = tnet(data1, data2, data3)
-        target = torch.FloatTensor(dista.size()).fill_(1)
-        if args.cuda:
-            target = target.cuda()
-        target = Variable(target)
-        loss_triplet =  criterion(dista, distb, distc, target, args.margin, args.in_triplet_hard).data[0]
-        
-        loss_embedd = embedded_x.norm(2) + embedded_y.norm(2) + embedded_z.norm(2)
-        test_loss = loss_triplet + args.reg * loss_embedd
-
-        # measure accuracy and record loss
-        acc = LossAccuracy(dista, distb, distc, args.margin)
-        accs.update(acc, data1.size(0))
-        losses.update(test_loss.data[0], data1.size(0))      
-
-    print('\nTest/val triplets: Average loss: %f, Accuracy: %f \n' %
-            (losses.avg, accs.avg))
-    return losses.avg, accs.avg
-
 def SaveCheckpoint(state, is_best, filename='checkpoint.pth.tar'):
     """Saves checkpoint to disk"""
     directory = os.path.join(runs_dir)
