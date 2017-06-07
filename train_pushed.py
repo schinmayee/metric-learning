@@ -347,7 +347,7 @@ def main():
 			       recall, query_results, test_data_set)
 		print('KNN for %d neighbors: accuracy = %f, recall = %f' %
 			(num_neighbors, accuracy, recall))
-	    print('...')
+	    print('...\n')
             
 
 def Train(train_loader_t, model, optimizer, epoch,
@@ -565,15 +565,16 @@ def SaveClusterResults(base_dir, prefix, results, data_set):
                 r.write(', ')
             r.write('\n')
 
-def ComputeKNN(embeddings, labels_true, num_neighbors = 4, num_times = 400):
+def ComputeKNN(embeddings, labels_true, num_neighbors = 4):
     global feature_size
-    print('Running KNN on some randomly selected images')
-    select_ids = np.random.choice(range(len(labels_true)), num_times)
+    print('Running KNN on all images')
+    #select_ids = np.random.choice(range(len(labels_true)), num_times)
     query_results = list()
     accuracy = 0
     recall = 0
+    num_times = len(labels_true)
     for i in range(num_times):
-	id_query = select_ids[i]
+	id_query = i
 	l_query = labels_true[id_query]
 	f_query = embeddings[id_query, :]
 	d_query = embeddings - f_query
