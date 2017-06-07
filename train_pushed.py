@@ -582,7 +582,7 @@ def ComputeKNN(embeddings, labels_true, num_neighbors = 4):
 	sort_ids = np.argsort(d_query)
 	res_ids = sort_ids[0:num_neighbors+1]
 	res_labels = labels_true[res_ids]
-	num_correct = np.where(res_labels == l_query)[0].shape[0]
+	num_correct = np.where(res_labels == l_query)[0].shape[0] - 1
 	query_results.append((id_query, res_ids, res_labels))
 	accuracy += float(num_correct)/float(num_neighbors)
 	if num_correct > 0:
