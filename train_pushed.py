@@ -578,7 +578,7 @@ def ComputeKNN(embeddings, labels_true, num_neighbors = 4):
 	l_query = labels_true[id_query]
 	f_query = embeddings[id_query, :]
 	d_query = embeddings - f_query
-	d_query = np.linalg.norm(d_query, axis=0).reshape((-1))
+	d_query = np.linalg.norm(d_query, axis=1).reshape((-1))
 	sort_ids = np.argsort(d_query)
 	res_ids = sort_ids[0:num_neighbors+1]
 	res_labels = labels_true[res_ids]
