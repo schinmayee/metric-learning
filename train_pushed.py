@@ -34,7 +34,7 @@ import losses
 from cub_loader import CUBImages
 from class_sampler import ClassSampler
 
-# sklearn for clustering and evaluating clusters
+# sklearn for clustering, KNN and evaluating clusters
 from sklearn.cluster import KMeans
 import sklearn.metrics as metrics
 
@@ -66,12 +66,10 @@ parser.add_argument('--loss', type=str, default='HingeL2',
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
-parser.add_argument('--val-freq', type=int, default=2,
-        help='epochs before validating on validation set (default: 2)')
-parser.add_argument('--results-freq', type=int, default=2,
-        help='epochs before saving results (default: 2)')
-parser.add_argument('--test-results-freq', type=int, default=10,
-        help='epochs before saving results (default: 10)')
+parser.add_argument('--val-freq', type=int, default=1,
+        help='epochs before validating on validation set (default: 1)')
+parser.add_argument('--results-freq', type=int, default=1,
+        help='epochs before saving results (default: 1)')
 
 parser.add_argument('--network', type=str, default='Simple',
         help='network architecture to use (default: Simple)')
@@ -84,7 +82,7 @@ parser.add_argument('--num-train', type=int, default=8,
         help='Number of train classes')
 parser.add_argument('--num-val', type=int, default=4,
         help='Number of validation classes')
-parser.add_argument('--num-test', type=int, default=5,
+parser.add_argument('--num-test', type=int, default=4,
         help='Number of test classes')
 parser.add_argument('--num-species', type=int, default=4,
         help='Number of specie in each batch')
@@ -137,7 +135,7 @@ def main():
     global Sampler
 
     args = parser.parse_args()
-    
+
     runs_dir = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             ('runs/rp-%s-f%d-%s' %
@@ -154,9 +152,9 @@ def main():
         num_train=args.num_train
         num_val=args.num_val
         num_test=args.num_test
-        train_classes=range(num_train+num_val)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
-        val_classes=range(num_train,num_train+num_val)
-        test_classes=range(num_train+num_val,num_train+num_val+num_test)
+        train_classes=range(num_train)  # triplets_per_class*train_classes should be a multiple of batch size (64 by default)
+        val_classes=range(num_train-num_val,num_train)
+        test_classes=range(num_train,num_train+num_test)
 
     # cuda
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -289,7 +287,9 @@ def main():
 
         # evaluate on validation set
         if epoch % args.val_freq == 0:
-            val_results = ComputeClusters(val_loader, model, len(val_classes))
+	    val_embeddings, val_labels_true = ComputeEmbeddings(val_loader, model)
+            val_results = ComputeClusters(val_embeddings, val_labels_true,
+		                          len(val_classes))
             acc = val_results['accuracy']
             precision = val_results['precision']
             recall = val_results['recall']
@@ -322,24 +322,32 @@ def main():
             train_losses.append(train_loss)
             classification_accs.append(acc)
 
-        # save final results and plot loss/accuracy with training
-        if epoch % args.results_freq == 0:
+	    # save final results and plot loss/accuracy with training
             print('Results are being saved to %s' % runs_dir)
             pickle.dump(epochs, open(os.path.join(runs_dir, 'epochs'), 'w'))
             pickle.dump(train_losses, open(os.path.join(runs_dir, 'train_losses'), 'w'))
             pickle.dump(classification_accs, open(os.path.join(runs_dir, 'classification_accs'), 'w'))
 
             # at the end, save some query results for visualization
-            if epoch%args.val_freq != 0:
-                val_results = ComputeClusters(val_loader, best_model, len(val_classes))
             SaveClusterResults(runs_dir, 'val', val_results, val_data_set)
 
-        if epoch % args.test_results_freq == 0:
+        if epoch % args.results_freq == 0:
             # also run the model and kmeans over test data and save the results
             # over test data, BUT DO NOT use this for tuning hyper-parameters
             print('Saving test results!!')
-            test_results = ComputeClusters(test_loader, best_model, len(test_classes))
+	    test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, best_model)
+            test_results = ComputeClusters(test_embeddings, test_labels_true,
+		                           len(test_classes))
             SaveClusterResults(runs_dir, 'test', test_results, test_data_set)
+	    for num_neighbors in [1,2,4,8,16,32]:
+		accuracy, recall, query_results = ComputeKNN(
+			test_embeddings, test_labels_true,
+		        num_neighbors=num_neighbors)
+		SaveKNNResults(runs_dir, 'test', num_neighbors, accuracy,
+			       recall, query_results, test_data_set)
+		print('KNN for %d neighbors: accuracy = %f, recall = %f' %
+			(num_neighbors, accuracy, recall))
+	    print('...')
             
 
 def Train(train_loader_t, model, optimizer, epoch,
@@ -425,13 +433,13 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 	    av, pv, nv, margin=args.margin)
     return triplet_loss
 
-def ComputeClusters(test_loader, enet, num_clusters):
+def ComputeEmbeddings(loader, enet):
     global feature_size
     enet.eval()
-    embeddings = np.zeros(shape=(len(test_loader.dataset), feature_size),
+    embeddings = np.zeros(shape=(len(loader.dataset), feature_size),
                           dtype=float)
-    labels_true = np.zeros(shape=(len(test_loader.dataset)), dtype=int)
-    for batch_idx, (data, classes, ids) in enumerate(test_loader):
+    labels_true = np.zeros(shape=(len(loader.dataset)), dtype=int)
+    for batch_idx, (data, classes, ids) in enumerate(loader):
         if args.cuda:
             data = data.cuda()
         data = Variable(data)
@@ -440,7 +448,11 @@ def ComputeClusters(test_loader, enet, num_clusters):
         f = enet(data)
         embeddings[ids.numpy(),:] = f.cpu().data.numpy()
         labels_true[ids.numpy()] = classes.cpu().numpy()
-    print('Generated embeddings, now running k-means for %d clusters...' % num_clusters)
+    return embeddings, labels_true
+
+def ComputeClusters(embeddings, labels_true, num_clusters):
+    global feature_size
+    print('Running k-means for %d clusters...' % num_clusters)
 
     # initialize centroid  for each cluster
     unique_classes = np.unique(labels_true)
@@ -460,11 +472,11 @@ def ComputeClusters(test_loader, enet, num_clusters):
     cluster_to_class = np.zeros(shape=(num_classes,), dtype=int)
     for i in range(num_classes):
         # figure out which class this cluster must be
-        # set of points that belong to this cluster
+        # 1. set of points that belong to this cluster
         cluster_points = np.where(labels_predicted == i)
-        # true class labels for these points
+        # 2. true class labels for these points
         actual_labels = labels_true[cluster_points]
-        # map cluster to most frequently occuring class
+        # 3. map cluster to most frequently occuring class
         unique, indices = np.unique(actual_labels, return_inverse=True)
         mode = unique[np.argmax(
             np.apply_along_axis(
@@ -478,11 +490,6 @@ def ComputeClusters(test_loader, enet, num_clusters):
         cluster_points = np.where(labels_copy == i)
         labels_predicted[cluster_points] = cluster_to_class[i]
     
-    #print('Labels true')
-    #print(labels_true)
-    #print('Labels predicted')
-    #print(labels_predicted)
-
     acc = metrics.accuracy_score(labels_true, labels_predicted)
     nmi_s = metrics.cluster.normalized_mutual_info_score(
               labels_true, labels_predicted)
@@ -557,6 +564,50 @@ def SaveClusterResults(base_dir, prefix, results, data_set):
                 r.write(':'+birdnames[cc]+' -> '+birdnames[cp])
                 r.write(', ')
             r.write('\n')
+
+def ComputeKNN(embeddings, labels_true, num_neighbors = 4, num_times = 400):
+    global feature_size
+    print('Running KNN on some randomly selected images')
+    select_ids = np.random.choice(range(len(labels_true)), num_times)
+    query_results = list()
+    accuracy = 0
+    recall = 0
+    for i in range(num_times):
+	id_query = select_ids[i]
+	l_query = labels_true[id_query]
+	f_query = embeddings[id_query, :]
+	d_query = embeddings - f_query
+	d_query = np.linalg.norm(d_query, axis=0).reshape((-1))
+	sort_ids = np.argsort(d_query)
+	res_ids = sort_ids[0:num_neighbors+1]
+	res_labels = labels_true[res_ids]
+	num_correct = np.where(res_labels == l_query)[0].shape[0]
+	query_results.append((id_query, res_ids, res_labels))
+	accuracy += float(num_correct)/float(num_neighbors)
+	if num_correct > 0:
+	    recall += 1
+    accuracy /= float(num_times)
+    recall = float(recall)/float(num_times)
+    return accuracy, recall, query_results
+
+def SaveKNNResults(base_dir, prefix, num_nbrs, accuracy, recall, results, data_set):
+    with open(os.path.join(base_dir, '%s_knn_%d_stats' % (prefix, num_nbrs)), 'w') as r:
+	r.write('knn accuracy : %f\n' % accuracy)
+	r.write('knn recall : %f\n' % recall)
+    paths = data_set.images
+    birdnames = data_set.birdnames
+    labels = data_set.labels
+    with  open(os.path.join(base_dir, '%s_knn_%d_query' % (prefix, num_nbrs)), 'w') as r:
+	for q in results:
+	    q_path = paths[q[0]]
+	    q_name = birdnames[labels[q[0]]]
+	    r.write(q_path+':'+q_name)
+	    for qq in q[1]:
+		qq_path = paths[qq]
+		qq_name = birdnames[labels[qq]]
+		r.write(','+qq_path+':'+qq_name)
+	    r.write('\n')
+
     
 def SaveCheckpoint(state, is_best, filename='checkpoint.pth.tar'):
     """Saves checkpoint to disk"""
