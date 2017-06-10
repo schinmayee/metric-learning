@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 def SimpleHingeLoss(dista, distb, distc, target, margin, hard_triplet=False):
     if hard_triplet:
@@ -28,4 +29,23 @@ def RatioLoss(dista, distb, distc, target, margin, hard_triplet=False):
     t1 = ep/(ep+en)
     t2 = en/(ep+en)
     loss = torch.mean(torch.pow(t1, 2) + 1 - torch.pow(t2, 2))
+    return loss
+
+def EmbHingeLoss(emba, embb, embc, margin, target):
+    triplet_loss = nn.functional.triplet_margin_loss(
+	    emba, embb, embc, margin=margin)
+    return triplet_loss
+
+def EmbSquareHingeLoss(emba, embb, embc, margin, target):
+    dist_pos = F.pairwise_distance(emba, embb, 2)
+    dist_neg = F.pairwise_distance(emba, embc, 2)
+    triplet_loss = nn.MarginRankingLoss(margin = margin)(torch.pow(dist_pos, 2), torch.pow(dist_neg, 2), target)
+    return triplet_loss
+
+def EmbSoftHingeLoss(emba, embb, embc, margin, target):
+    dist_pos  = F.pairwise_distance(emba, embb, 2)
+    dist_neg1 = F.pairwise_distance(emba, embc, 2)
+    dist_neg2 = F.pairwise_distance(embb, embc, 2)
+    dist_neg_s = torch.log(torch.exp(margin - dist_neg1) + torch.exp(margin - dist_neg2))
+    loss = nn.MarginRankingLoss(margin = 0)(dist_pos, dist_neg_s, target)
     return loss

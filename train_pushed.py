@@ -61,8 +61,8 @@ parser.add_argument('--reg', type=float, default=1e-3,
 parser.add_argument('--resume', type=str, default='',
                     help='path to latest checkpoint (default: none)')
 
-parser.add_argument('--loss', type=str, default='HingeL2',
-        help='loss mechanism (default: HingeL2)')
+parser.add_argument('--loss', type=str, default='Hinge',
+	help='loss mechanism (default: Hinge, other options: Square, Soft)')
 parser.add_argument('--data', type=str, default='cub-2011',
         help='dataset (default: cub-2011)')
 
@@ -412,7 +412,7 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 		all_neg = in_margin.nonzero()
 		if (len(all_neg.size()) == 0):
 		    continue
-		this_loss = torch.sum(-norms_loss[in_margin] + args.margin)
+		#this_loss = torch.sum(-norms_loss[in_margin] + args.margin)
 		#print('This loss %f' % this_loss)
 		for k in range(all_neg.size()[0]):
 		    anchor.append(features[aidx].view(1,-1))
@@ -429,8 +429,16 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 	av = av.cuda()
 	pv = pv.cuda()
 	nv = nv.cuda()
-    triplet_loss = torch.nn.functional.triplet_margin_loss(
-	    av, pv, nv, margin=args.margin)
+    target = torch.FloatTensor(av.size()[0]).fill_(1)
+    if args.cuda:
+        target = target.cuda()
+    target = Variable(target)
+    if args.loss == 'Hinge':
+	triplet_loss = losses.EmbHingeLoss(av, pv, nv, args.margin, target)
+    elif args.loss == 'Square':
+	triplet_loss = losses.EmbSquareHingeLoss(av, pv, nv, args.margin, target)
+    elif args.loss == 'Soft':
+	triplet_loss = losses.EmbSoftHingeLoss(av, pv, nv, args.margin, target)
     return triplet_loss
 
 def ComputeEmbeddings(loader, enet):
