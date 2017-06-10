@@ -403,6 +403,7 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 	threshold = feature_size*10.0 # some large number for threshold, for the default case
 	if args.local_sampling:
 	    anc_pos = list()
+	    # go over all anchor-positive pairs and compute distances
 	    for j in range(num_per_specie):
 		aidx = start_idx + j
 		for pair in range(j, num_per_specie):
@@ -410,6 +411,7 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 		    ap_dist = (features[aidx]-features[pidx]).norm(2).data[0]
 		    anc_pos.append(ap_dist)
 	    anc_pos = np.array(anc_pos)
+	    # sort and select some threshold distance for positive sampling
 	    anc_pos.sort()
 	    threshold = anc_pos[int(anc_pos.size*0.6)]
 
