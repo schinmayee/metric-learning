@@ -88,6 +88,8 @@ parser.add_argument('--num-species', type=int, default=4,
         help='Number of specie in each batch')
 parser.add_argument('--num-batches', type=int, default=100,
 	help='Number of batches per epoch (...)')
+parser.add_argument('--num-clusters', type=int, default=1,
+	help='Number of clusters per unknown class')
 
 parser.add_argument('--normalize-features', action='store_true', default=False,
                     help='normalize features')
@@ -288,8 +290,7 @@ def main():
         # evaluate on validation set
         if epoch % args.val_freq == 0:
 	    val_embeddings, val_labels_true = ComputeEmbeddings(val_loader, model)
-            val_results = ComputeClusters(val_embeddings, val_labels_true,
-		                          len(val_classes))
+            val_results = ComputeClusters(val_embeddings, val_labels_true)
             acc = val_results['accuracy']
             precision = val_results['precision']
             recall = val_results['recall']
@@ -336,8 +337,7 @@ def main():
             # over test data, BUT DO NOT use this for tuning hyper-parameters
             print('Saving test results!!')
 	    test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, best_model)
-            test_results = ComputeClusters(test_embeddings, test_labels_true,
-		                           len(test_classes))
+            test_results = ComputeClusters(test_embeddings, test_labels_true)
             SaveClusterResults(runs_dir, 'test', test_results, test_data_set)
 	    for num_neighbors in [1,2,4,8,16,32]:
 		accuracy, recall, query_results = ComputeKNN(
@@ -450,20 +450,22 @@ def ComputeEmbeddings(loader, enet):
         labels_true[ids.numpy()] = classes.cpu().numpy()
     return embeddings, labels_true
 
-def ComputeClusters(embeddings, labels_true, num_clusters):
+def ComputeClusters(embeddings, labels_true):
     global feature_size
-    print('Running k-means for %d clusters...' % num_clusters)
+    num_clusters = args.num_clusters
+    print('Running k-means for %d clusters per class ...' % num_clusters)
 
-    # initialize centroid  for each cluster
+    # initialize centroid(s)  for each cluster
     unique_classes = np.unique(labels_true)
     num_classes = len(unique_classes)
-    initial_centers = np.zeros(shape=(num_clusters, feature_size), dtype=float)
+    initial_centers = np.zeros(shape=(num_classes*num_clusters, feature_size), dtype=float)
     for i in range(num_classes):
-        c_ids = np.where(labels_true == unique_classes[i])
-        use_im = np.random.choice(c_ids[0])
-        initial_centers[i,:] = embeddings[use_im,:]
+	for ii in range(num_clusters):
+	    c_ids = np.where(labels_true == unique_classes[i])
+	    use_im = np.random.choice(c_ids[0])
+	    initial_centers[i*num_clusters+ii,:] = embeddings[use_im,:]
 
-    kmeans_model = KMeans(n_clusters=num_clusters, random_state=1,
+    kmeans_model = KMeans(n_clusters=num_classes*num_clusters, random_state=1,
                           max_iter=1000, tol=1e-3,
                           init=initial_centers, n_init=1)
     labels_predicted = kmeans_model.fit_predict(embeddings)
