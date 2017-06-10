@@ -93,6 +93,8 @@ parser.add_argument('--num-clusters', type=int, default=1,
 
 parser.add_argument('--normalize-features', action='store_true', default=False,
                     help='normalize features')
+parser.add_argument('--local-sampling', action='store_true', default=False,
+                    help='use local positive sampling')
 
 # parameters
 feature_size = 0
@@ -398,6 +400,19 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
     #print('Computing triplets ...')
     #total_loss = 0
     for i in range(num_species):
+	threshold = feature_size*10.0 # some large number for threshold, for the default case
+	if args.local_sampling:
+	    anc_pos = list()
+	    for j in range(num_per_specie):
+		aidx = start_idx + j
+		for pair in range(j, num_per_specie):
+		    pidx = start_idx + pair
+		    ap_dist = (features[aidx]-features[pidx]).norm(2).data[0]
+		    anc_pos.append(ap_dist)
+	    anc_pos = np.array(anc_pos)
+	    anc_pos.sort()
+	    threshold = anc_pos[int(anc_pos.size*0.6)]
+
 	for j in range(num_per_specie):
 	    aidx = start_idx + j
 	    diff = features - features[aidx,:].expand_as(features)
@@ -405,6 +420,8 @@ def ComputeTripletLoss(features, labels, num_species, num_per_specie):
 	    for pair in range(j, num_per_specie):
 		pidx = start_idx + pair
 		ap_dist = (features[aidx]-features[pidx]).norm(2).data[0]
+		if ap_dist > threshold:  # skip this triplet
+		    continue
 		ap_dist = torch.Tensor(feature_size).fill_(ap_dist)
 		norms_loss = diff_norms.data - ap_dist  # negative - positive-dist
 		norms_loss[start_idx:start_idx+num_per_specie] = 2*args.margin
@@ -594,7 +611,8 @@ def ComputeKNN(embeddings, labels_true, num_neighbors = 4):
 	res_labels = labels_true[res_ids]
 	num_correct = np.where(res_labels == l_query)[0].shape[0] - 1
 	query_results.append((id_query, res_ids, res_labels))
-	accuracy += float(num_correct)/float(num_neighbors)
+	if num_correct > 0:
+	    accuracy += float(num_correct)/float(num_neighbors)
 	if num_correct > 0:
 	    recall += 1
     accuracy /= float(num_times)
