@@ -3,6 +3,9 @@
 import matplotlib
 matplotlib.use('Agg')
 
+from matplotlib.mlab import PCA
+import matplotlib.pyplot as plt
+
 import argparse
 import os
 import shutil
@@ -11,17 +14,11 @@ import sys
 
 import copy
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
-import torch.backends.cudnn as cudnn
 
 import numpy as np
 from random import shuffle
-
-import pickle
 
 import utils
 
@@ -32,10 +29,6 @@ import model_net
 import losses
 
 from cub_loader import CUBImages
-
-# sklearn for clustering, KNN and evaluating clusters
-from sklearn.cluster import KMeans
-import sklearn.metrics as metrics
 
 # Training settings
 parser = argparse.ArgumentParser(description='Metric Learning With Triplet Loss and Unknown Classes')
@@ -55,8 +48,8 @@ parser.add_argument('--num-val', type=int, default=4,
         help='Number of validation classes')
 parser.add_argument('--num-test', type=int, default=4,
         help='Number of test classes')
-parser.add_argument('--batch-size', type=int, default=64,
-                    help='input batch size for training (default: 64)')
+parser.add_argument('--batch-size', type=int, default=8,
+                    help='input batch size for training (default: 8)')
 
 parser.add_argument('--normalize-features', action='store_true', default=False,
                     help='normalize features')
@@ -173,12 +166,22 @@ def main():
 
     model.eval()
 
-    print('Generating training set embeddings')
-    train_embeddings, train_labels_true = ComputeEmbeddings(train_loader, model)
+    #print('Generating training set embeddings')
+    #train_embeddings, train_labels_true = ComputeEmbeddings(train_loader, model)
     print('Generating validation set embeddings')
     val_embeddings, val_labels_true = ComputeEmbeddings(val_loader, model)
-    print('Generating test set embeddings')
-    test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, model)
+    #Print('Generating test set embeddings')
+    #Test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, model)
+
+    # select some random classes for visualization
+    train_sel = [[0,6,10,20,49,53]]
+    val_sel   = [[64,74,80,86,95,98]]
+    test_sel  = [[105,129,144,156,183,192]]
+    markers = ['o', '^', 'v', 'p', 's', 'D']
+
+    print('Generating PCA for validation set')
+    SavePCA(val_embeddings, val_labels_true, val_sel, markers,
+	    os.path.join(output_dir, 'val'))
 
 def ComputeEmbeddings(loader, enet):
     global feature_size
@@ -194,6 +197,28 @@ def ComputeEmbeddings(loader, enet):
         embeddings[ids.numpy(),:] = f.cpu().data.numpy()
         labels_true[ids.numpy()] = classes.cpu().numpy()
     return embeddings, labels_true
+
+def SavePCA(features, labels, classes, markers, prefix):
+    for n, cc in enumerate(classes):
+	ids = list()
+	cc_ids = list()
+	for c in cc:
+	    c_ids = list(np.where(labels == c)[0])
+	    #c_ids = np.random.choice(c_ids, 20)  # select random 20
+	    ids = ids + list(c_ids)
+	    cc_ids.append(list(c_ids))
+	ids = np.array(ids)
+	samples = features[ids,:]
+	pca = PCA(samples)
+	num_plotted = 0
+	for i in range(len(cc)):
+	    num = len(cc_ids[i])
+	    plt.plot(pca.Y[num_plotted:num_plotted+num,0],
+		     pca.Y[num_plotted:num_plotted+num,1],
+		     markers[i], markersize=5, alpha=0.5)
+	    num_plotted += num
+	plt.axis('off')
+	plt.savefig(prefix + ('_%d.png' % n))
 
 if __name__ == '__main__':
     main()  
