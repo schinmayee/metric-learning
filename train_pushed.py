@@ -471,8 +471,8 @@ def ComputeClusters(embeddings, labels_true):
     labels_predicted = kmeans_model.fit_predict(embeddings)
 
     # map predicted clusters to actual class ids
-    cluster_to_class = np.zeros(shape=(num_classes,), dtype=int)
-    for i in range(num_classes):
+    cluster_to_class = np.zeros(shape=(num_classes*num_clusters,), dtype=int)
+    for i in range(num_classes*num_clusters):
         # figure out which class this cluster must be
         # 1. set of points that belong to this cluster
         cluster_points = np.where(labels_predicted == i)
@@ -488,7 +488,7 @@ def ComputeClusters(embeddings, labels_true):
 
     # map cluster id to class ids
     labels_copy = np.copy(labels_predicted)
-    for i in range(num_classes):
+    for i in range(num_classes*num_clusters):
         cluster_points = np.where(labels_copy == i)
         labels_predicted[cluster_points] = cluster_to_class[i]
     
