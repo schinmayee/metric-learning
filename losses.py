@@ -46,6 +46,6 @@ def EmbSoftHingeLoss(emba, embb, embc, margin, target):
     dist_pos  = F.pairwise_distance(emba, embb, 2)
     dist_neg1 = F.pairwise_distance(emba, embc, 2)
     dist_neg2 = F.pairwise_distance(embb, embc, 2)
-    dist_neg_s = -torch.log(torch.exp(margin - dist_neg1) + torch.exp(margin - dist_neg2))
-    loss = nn.MarginRankingLoss(margin = 0)(dist_pos, dist_neg_s, target)
+    dist_neg_s = (torch.exp(margin - dist_neg1) + torch.exp(margin - dist_neg2))
+    loss = torch.mean(torch.log(dist_neg_s) + dist_pos)
     return loss
