@@ -2,7 +2,7 @@
 
 This project uses a triplet network to map images to embeddings, that can then be used to cluster similar images, or query similar images. The idea is to use metric learning to learn features for images so that images from the same class are close to each other.
 
-A detailed report about the project is in `docs` directory. The project uses `python 2.7` and `pytorch`, and runs with and without a GPU, but using a  GPU is highly recommended. The project borrows some code from [another triplet network in pytorch][https://github.com/andreasveit/triplet-network-pytorch] and is also inspired by [openface](https://github.com/cmusatyalab/openface).
+A detailed report about the project is in `docs` directory. The project uses `python 2.7` and `pytorch`, and runs with and without a GPU, but using a  GPU is highly recommended. The project borrows some code from [another triplet network in pytorch](https://github.com/andreasveit/triplet-network-pytorch) and is also inspired by [openface](https://github.com/cmusatyalab/openface).
 
 I have also included result logs generated for experiments for the report, in `docs/report-results`. Each directory in `docs/report-results` is a separate experiment. Please see `docs/report-results/README` for a description of files and results.
 
