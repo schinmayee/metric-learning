@@ -6,7 +6,7 @@ A detailed report about the project is in `docs` directory. The project uses `py
 
 I have also included result logs generated for experiments for the report, in `docs/report-results`. Each directory in `docs/report-results` is a separate experiment. Please see `docs/report-results/README` for a description of files and results.
 
-The code includes a dataloader for CUB-200-2011 birds dataset. You can download the dataset using download_data.sh.
+The code includes a dataloader for CUB-200-2011 birds dataset. You can download the dataset using `download_data.sh`.
 
 The file `train.py` feeds in triplets to a network, and computes a loss over these triplets. You can use several different networks and loss functions, and pass in different parameters to the code. Type `./train.py --help` for a full list of options.
 
