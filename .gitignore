@@ -102,7 +102,5 @@ ENV/
 
 # datasets and runs
 datasets/
-runs/
-results/
-saved-runs/
-archived-runs*
+*runs*
+*output*

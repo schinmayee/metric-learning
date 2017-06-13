@@ -1,0 +1,13 @@
+Each experiment's results are in a separate folder.
+
+You can find the command used to run the experiment in command.sh in the
+experiment folder, for example, final-hinge-1/command.sh.
+
+The files test_knn_N_stats give query results (accuracy, recall@K), and
+test_knn_N_query give results for a queried image -- the first image is the
+query image, and the remaining results are the nearest neighbors. Each line
+starts with the queried image, followed by N+1 image paths -- the queried
+image, and unique N other nearest neighbors.
+
+The file test_stats gives F1 score, NMI and other metrics for clustering,
+evaluated on test split.

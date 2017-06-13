@@ -166,22 +166,26 @@ def main():
 
     model.eval()
 
-    #print('Generating training set embeddings')
-    #train_embeddings, train_labels_true = ComputeEmbeddings(train_loader, model)
-    print('Generating validation set embeddings')
-    val_embeddings, val_labels_true = ComputeEmbeddings(val_loader, model)
-    #Print('Generating test set embeddings')
-    #Test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, model)
-
     # select some random classes for visualization
     train_sel = [[0,6,10,20,49,53]]
     val_sel   = [[64,74,80,86,95,98]]
     test_sel  = [[105,129,144,156,183,192]]
     markers = ['o', '^', 'v', 'p', 's', 'D']
 
+    #print('Generating training set embeddings')
+    #train_embeddings, train_labels_true = ComputeEmbeddings(train_loader, model)
+
+    print('Generating validation set embeddings')
+    val_embeddings, val_labels_true = ComputeEmbeddings(val_loader, model)
     print('Generating PCA for validation set')
     SavePCA(val_embeddings, val_labels_true, val_sel, markers,
 	    os.path.join(output_dir, 'val'))
+
+    print('Generating test set embeddings')
+    Test_embeddings, test_labels_true = ComputeEmbeddings(test_loader, model)
+    print('Generating PCA for test set')
+    SavePCA(test_embeddings, test_labels_true, test_sel, markers,
+	    os.path.join(output_dir, 'test'))
 
 def ComputeEmbeddings(loader, enet):
     global feature_size
