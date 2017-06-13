@@ -14,4 +14,4 @@ The file `train_pushed.py` feeds in a batch of images, with some randomly sample
 
 Type `./train_pushed.py --help` for a full list of options.
 
-You can find example ways to run the `train.py` and `train_pushed.py` in `*-command.sh`.
+You can find example ways to run the `train.py` and `train_pushed.py` in `*_command.sh`.
